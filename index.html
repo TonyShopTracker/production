@@ -138,6 +138,29 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 .srow.now{border-color:var(--accent);background:#10213a}.srow.now .tag{color:var(--accent)}.srow.now .tm{color:var(--text)}
 .srow.late{border-color:var(--bad)}.srow.late .tag{color:var(--bad)}.srow.late .tm{color:#ff9b9b}
 .srow.missed .tag{color:var(--bad)}
+@media (orientation:landscape) and (min-width:900px){
+  .stepbox{max-width:1000px}
+  .sgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:28px;align-items:center}
+  .sgrid .big{font-size:84px;margin:14px 0}
+  .sgrid .pad{margin-top:0}
+}
+@media (max-height:920px){
+  header{padding:8px 0}
+  .medal{width:36px;height:36px}
+  .brand h1{font-size:18px}
+  .datebar button{width:38px;height:38px}
+  nav{margin:4px 0 10px}
+  nav button{padding:9px 12px}
+  .modebar{margin-bottom:8px}.modebar button{padding:8px 12px}
+  .stepbox{padding:14px 16px}
+  .prog{margin-bottom:10px}
+  .pad{gap:7px}.pad button{padding:12px 0;font-size:22px}
+  .row{margin-top:10px}.btn{padding:12px}
+  .note{padding:8px 12px;margin-bottom:10px}
+  .sched{gap:6px}.srow{padding:7px 12px}.srow .box{width:26px;height:26px}.srow .tx b{font-size:15px}.srow .tx small{font-size:12px;margin-top:1px}
+  .nextbar{padding:9px 14px;margin-bottom:10px}
+  .kpi{padding:10px 12px}.kpi .v{font-size:22px}
+}
 @media (max-width:760px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.brand h1{font-size:17px}.datebar .d{min-width:120px}}
 </style>
 </head>
@@ -163,7 +186,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.5.2";
+const APP_VERSION = "1.5.3";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -545,14 +568,14 @@ function viewCount(){
   const st=s[step]; const v=cget(st); const shown=cbuf!==""?cbuf:f(v);
   const sug = countMode==="am" && st.k==="start" && !has(v) ? suggestedStart(st.def,curDate) : null;
   const ct=countTimes(curDate,countMode);
-  return modeBar()+`<div class="stepbox"><div class="prog">${s.map((_,i)=>`<i class="${i<=step?'d':''}"></i>`).join("")}</div>
+  return modeBar()+`<div class="stepbox"><div class="prog">${s.map((_,i)=>`<i class="${i<=step?'d':''}"></i>`).join("")}</div><div class="sgrid"><div class="sl">
   <div style="color:var(--mute);font-size:13px">Step ${step+1} of ${s.length} · ${ct?`<span style="color:var(--warn)">${ct}</span>`:(countMode==="pm"?"after lunch":countMode==="eod"?"before leaving, after the Ready piles are loaded":"count before anything moves")+" · the clock starts at the first number"}</div>
   <h2 style="margin:6px 0 0">${esc(st.def.name)}</h2><div style="color:var(--mute)">${esc(countMode!=="am"&&st.k==="start"?"Tickets on hand":st.label)}</div>
   ${countMode!=="am"?`<div style="color:var(--mute);font-size:12px;margin-top:4px">8:00 count: ${f(amVal(st))}${countMode==="eod"?` · 1:00 count: ${f(snapVal(st,"pm"))}`:""}</div>`:""}
   <div class="big">${shown}</div>
   ${sug!=null?`<div style="text-align:center;margin-bottom:6px"><button class="btn grey" style="flex:none;padding:10px 14px" onclick="useSug(${sug})">Use last day's Left Over: ${sug}</button></div>`:""}
-  <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="ckey('${n}')">${n}</button>`).join("")}<button onclick="ckey('C')">Clear</button><button onclick="ckey('0')">0</button><button onclick="ckey('B')">⌫</button></div>
-  <div class="row"><button class="btn grey" onclick="cmove(-1)">‹ Back</button><button class="btn blue" onclick="cmove(1)">${step===s.length-1?'Finish':'Next ›'}</button></div></div>`;
+  </div><div class="sr"><div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="ckey('${n}')">${n}</button>`).join("")}<button onclick="ckey('C')">Clear</button><button onclick="ckey('0')">0</button><button onclick="ckey('B')">⌫</button></div>
+  <div class="row"><button class="btn grey" onclick="cmove(-1)">‹ Back</button><button class="btn blue" onclick="cmove(1)">${step===s.length-1?'Finish':'Next ›'}</button></div></div></div></div>`;
 }
 function amVal(st){const dd=deptData(curDate,st.def.id,false); if(!dd) return null; return st.k==="start"?dd.start:dd.items[st.k]}
 function snapVal(st,m){const d=day(curDate,false); return d&&d[m]&&d[m][st.def.id]?d[m][st.def.id][st.k]:null}
@@ -621,13 +644,13 @@ function viewMove(){
   }
   const st=s[mstep]; const v=mget(st); const shown=mbuf!==""?mbuf:f(v);
   const so=completedOf(st.def,deptData(curDate,st.def.id,false));
-  return `<div class="stepbox"><div class="prog">${s.map((_,i)=>`<i class="${i<=mstep?'d':''}"></i>`).join("")}</div>
+  return `<div class="stepbox"><div class="prog">${s.map((_,i)=>`<i class="${i<=mstep?'d':''}"></i>`).join("")}</div><div class="sgrid"><div class="sl">
   <div style="color:var(--mute);font-size:13px">${esc(moveLabel)} (${it?hm(it.t):""}) · step ${mstep+1} of ${s.length} · how many did you take out of the DONE spot?</div>
   <h2 style="margin:6px 0 0">${esc(st.def.name)}</h2><div style="color:var(--mute)">${esc(st.label)}</div>
   <div style="color:var(--mute);font-size:12px;margin-top:4px">Today so far: ${f(so)} of ${cfg().targetDay}</div>
   <div class="big" style="color:var(--accent)">${shown}</div>
-  <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="mkey('${n}')">${n}</button>`).join("")}<button onclick="mkey('C')">Clear</button><button onclick="mkey('0')">0</button><button onclick="mkey('B')">⌫</button></div>
-  <div class="row"><button class="btn grey" onclick="mmove(-1)">‹ Back</button><button class="btn blue" onclick="mmove(1)">${mstep===s.length-1?'Finish':(has(v)||mbuf!==""?'Next ›':'None · Next ›')}</button></div></div>`;
+  </div><div class="sr"><div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="mkey('${n}')">${n}</button>`).join("")}<button onclick="mkey('C')">Clear</button><button onclick="mkey('0')">0</button><button onclick="mkey('B')">⌫</button></div>
+  <div class="row"><button class="btn grey" onclick="mmove(-1)">‹ Back</button><button class="btn blue" onclick="mmove(1)">${mstep===s.length-1?'Finish':(has(v)||mbuf!==""?'Next ›':'None · Next ›')}</button></div></div></div></div>`;
 }
 function mkey(k){const st=moveSteps()[mstep];
   if(k==="C"){mbuf="";mset(st,null);render();return}
