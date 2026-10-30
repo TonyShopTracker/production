@@ -1,6 +1,6 @@
 // Production Tracker: lets the app open with no internet.
 // Change VERSION whenever you upload a new index.html so the iPad picks it up.
-const VERSION = "pt-1.5.3";
+const VERSION = "pt-1.5.4";
 const FILES = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {

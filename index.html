@@ -138,9 +138,13 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 .srow.now{border-color:var(--accent);background:#10213a}.srow.now .tag{color:var(--accent)}.srow.now .tm{color:var(--text)}
 .srow.late{border-color:var(--bad)}.srow.late .tag{color:var(--bad)}.srow.late .tm{color:#ff9b9b}
 .srow.missed .tag{color:var(--bad)}
+/* big keypad for counts and move rounds (1.5x) */
+.sgrid .pad{gap:10px}
+.sgrid .pad button{padding:22px 0;font-size:34px;border-radius:16px}
+.sgrid .row .btn{padding:20px;font-size:21px;border-radius:16px}
 @media (orientation:landscape) and (min-width:900px){
-  .stepbox{max-width:1000px}
-  .sgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:28px;align-items:center}
+  .stepbox{max-width:1140px}
+  .sgrid{display:grid;grid-template-columns:minmax(0,0.85fr) minmax(0,1.5fr);gap:28px;align-items:center}
   .sgrid .big{font-size:84px;margin:14px 0}
   .sgrid .pad{margin-top:0}
 }
@@ -186,7 +190,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.5.3";
+const APP_VERSION = "1.5.4";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
