@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tony's Production Tracker</title>
+<meta name="theme-color" content="#0b0f16">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Production">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#0b0f16;--panel:#111722;--panel2:#161e2c;--line:#243048;--text:#e8edf5;--mute:#93a0b5;
+  --accent:#5aa2ff;--good:#37c47a;--bad:#ff5c5c;--warn:#f2b01e;--purple:#a07cff;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px 48px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px}
+.medal{width:44px;height:44px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#f6d27a,#b8862a);display:flex;align-items:center;justify-content:center;color:#2a1c05;font-weight:900;font-size:13px;box-shadow:0 0 0 2px #3a2a0c;flex-shrink:0}
+.brand h1{margin:0;font-size:20px;letter-spacing:.02em}
+.brand small{display:block;color:var(--mute);font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+.datebar{display:flex;align-items:center;gap:6px}
+.datebar button{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:42px;height:42px;font-size:18px}
+.datebar .d{text-align:center;min-width:150px}
+.datebar .d b{display:block;font-size:16px}
+.datebar .d span{color:var(--mute);font-size:13px}
+.datebar .today{width:auto;padding:0 12px;font-size:13px;font-weight:700}
+nav{display:flex;gap:4px;margin:12px 0;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;border-bottom:3px solid transparent;padding:12px 14px;font-weight:600;color:var(--mute);font-size:15px;margin-bottom:-1px}
+nav button.on{color:var(--text);border-color:var(--accent)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.kpi .l{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.1em}
+.kpi .v{font-size:26px;font-weight:800;margin-top:4px}
+.kpi .s{color:var(--mute);font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:left;width:100%;display:flex;flex-direction:column;justify-content:flex-start}
+.card:active{border-color:var(--accent)}
+.card .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card .n{color:var(--accent);font-weight:800;font-size:12px;margin-right:6px}
+.card .name{font-weight:700;font-size:16px}
+.pill{font-size:11px;font-weight:800;padding:4px 9px;border-radius:999px;white-space:nowrap}
+.pill.good{background:rgba(55,196,122,.15);color:var(--good)}
+.pill.bad{background:rgba(255,92,92,.14);color:var(--bad)}
+.pill.none{background:#1c2536;color:var(--mute)}
+.nums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:12px 0 10px}
+.nums div{background:var(--panel2);border-radius:8px;padding:7px 6px;text-align:center}
+.nums span{display:block;color:var(--mute);font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+.nums b{font-size:18px}
+.bar{height:8px;background:#1c2536;border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px}
+.barlab{display:flex;justify-content:space-between;color:var(--mute);font-size:12px;margin-top:6px}
+.sub{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:#1a2333;border-radius:6px;padding:3px 8px;font-size:12px;color:var(--mute)}
+.chip b{color:var(--text)}
+.chip.pile{border:1px solid #4a3d18}
+.chip.pile b{color:var(--warn)}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-end;justify-content:center;z-index:10}
+.scrim.on{display:flex}
+.sheet{background:var(--panel);border:1px solid var(--line);border-radius:18px 18px 0 0;width:min(780px,100%);max-height:94vh;overflow:auto;padding:18px 18px calc(18px + env(safe-area-inset-bottom))}
+.sheet h2{margin:0 0 4px;font-size:20px}
+.hint{color:var(--mute);font-size:13px;margin-bottom:12px}
+.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.field{background:var(--panel2);border:2px solid transparent;border-radius:12px;padding:10px;text-align:left;min-height:68px}
+.field.sel{border-color:var(--accent)}
+.field span{display:block;color:var(--mute);font-size:12px}
+.field b{font-size:26px}
+.field.calc{opacity:.8;cursor:default;border-style:dashed;border-color:#26324a}
+.field.pile b{color:var(--warn)}
+.sec{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.12em;margin:14px 0 8px}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.pad button{background:#1c2536;border:0;border-radius:12px;font-size:24px;font-weight:700;padding:16px 0}
+.pad button:active{background:#2b3956}
+.row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.btn{flex:1;border:0;border-radius:12px;padding:14px;font-weight:800;font-size:16px;min-width:120px}
+.btn.blue{background:var(--accent);color:#06101f}
+.btn.grey{background:#1c2536}
+.btn.red{background:#3a1a1f;color:#ff9b9b}
+.btn.green{background:#173a28;color:#8ff0bb}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line)}
+th,td{padding:10px 8px;border-bottom:1px solid var(--line);text-align:center;font-size:14px;white-space:nowrap}
+th{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.08em;background:var(--panel2)}
+td:first-child,th:first-child{text-align:left;padding-left:14px}
+td.g{color:var(--good);font-weight:700}td.r{color:var(--bad);font-weight:700}td.e{color:#4a5670}
+.tablebox{overflow-x:auto;border-radius:12px;border:1px solid var(--line)}
+.tablebox table{border:0}
+.stepbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;max-width:640px;margin:0 auto}
+.prog{display:flex;gap:3px;margin-bottom:16px}
+.prog i{flex:1;height:6px;border-radius:9px;background:#1c2536}
+.prog i.d{background:var(--accent)}
+.big{font-size:60px;font-weight:800;text-align:center;margin:8px 0;color:var(--warn);min-height:72px}
+textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:10px}
+.log{margin-top:12px;display:grid;gap:8px}
+.log div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.log small{color:var(--mute);display:block}
+.log button{background:none;border:0;color:var(--mute);font-size:18px}
+.flag{background:rgba(242,176,30,.1);border:1px solid rgba(242,176,30,.35);color:#ffd884;border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:14px}
+.note{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:14px;color:var(--mute)}
+.help{display:inline-flex;width:20px;height:20px;border-radius:50%;background:var(--purple);color:#fff;font-size:12px;font-weight:800;align-items:center;justify-content:center;margin-left:6px;vertical-align:middle;border:0;padding:0}
+.setbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px;max-width:720px}
+.setbox h3{margin:0 0 10px;font-size:16px}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.setrow:last-child{border-bottom:0}
+.setrow input{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;width:110px;text-align:center;font-size:16px}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1f2a3f;border:1px solid var(--line);padding:10px 16px;border-radius:10px;font-size:14px;z-index:20;display:none}
+.pinpad{max-width:320px;margin:30px auto;text-align:center}
+.dots{display:flex;justify-content:center;gap:12px;margin:14px 0}
+.dots i{width:16px;height:16px;border-radius:50%;border:2px solid var(--mute)}
+.dots i.f{background:var(--accent);border-color:var(--accent)}
+.modebar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;max-width:760px;margin:0 auto 12px}
+.modebar button{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;text-align:left}
+.modebar button b{display:block;font-size:15px}.modebar button small{color:var(--mute);font-size:12px}
+.modebar button.on{border-color:var(--accent);background:#10213a}
+.nextbar{width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;background:var(--panel);border:1px solid var(--line);border-left:0;border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.nextbar b{font-size:16px}.nextbar small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
+.nextbar .go{color:var(--accent);font-weight:700;white-space:nowrap}
+.nextbar.now{border-color:var(--accent);background:#10213a}
+.nextbar.late{border-color:var(--bad);background:#2a1418}.nextbar.late b{color:#ff9b9b}
+.sched{display:grid;gap:8px;max-width:760px}
+.srow{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;text-align:left;width:100%}
+.srow .tm{width:86px;font-weight:800;color:var(--mute);white-space:nowrap}
+.srow .box{width:30px;height:30px;border-radius:8px;border:2px solid #3a4866;display:flex;align-items:center;justify-content:center;font-weight:900;flex-shrink:0}
+.srow .tx{flex:1}.srow .tx small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
+.srow .tag{font-size:12px;font-weight:800;white-space:nowrap}
+.srow.done{opacity:.75}.srow.done .box{background:var(--good);border-color:var(--good);color:#06101f}.srow.done .tag{color:var(--good)}
+.srow.now{border-color:var(--accent);background:#10213a}.srow.now .tag{color:var(--accent)}.srow.now .tm{color:var(--text)}
+.srow.late{border-color:var(--bad)}.srow.late .tag{color:var(--bad)}.srow.late .tm{color:#ff9b9b}
+.srow.missed .tag{color:var(--bad)}
+@media (max-width:760px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.brand h1{font-size:17px}.datebar .d{min-width:120px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="medal" style="font-size:20px">T</div>
+      <div><small>Tony's</small><h1>Production Tracker</h1></div>
+    </div>
+    <div class="datebar">
+      <button onclick="shiftDay(-1)" aria-label="Previous day">‹</button>
+      <div class="d"><b id="dayname"></b><span id="datestr"></span></div>
+      <button onclick="shiftDay(1)" aria-label="Next day">›</button>
+      <button class="today" id="todayBtn" onclick="goToday()">Today</button>
+    </div>
+  </header>
+  <nav id="tabs"></nav>
+  <main id="view"></main>
+</div>
+<div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== Setup ===================== */
+const APP_VERSION = "1.5.1";
+const KEY = "sw2099_production_v1";
+
+const DEFAULT_CONFIG = {
+  targetDay: 40,
+  targetWeek: 200,
+  pin: "2099",
+  schedule: [
+    {t:"08:00", label:"Morning Count", note:"Count every pile before anything moves", kind:"count"},
+    {t:"08:30", label:"Sweep", note:"Move everything finished overnight / before 8 (DONE spots)", kind:"move"},
+    {t:"10:00", label:"Move round 1", note:"Move finished work, restock Ready piles", kind:"move"},
+    {t:"11:30", label:"Move round 2", note:"Move finished work, stock Ready piles for lunch", kind:"move"},
+    {t:"13:00", label:"Afternoon Count", note:"Count every pile again after lunch", kind:"count_pm"},
+    {t:"14:30", label:"Move round 3", note:"Move finished work, restock Ready piles", kind:"move"},
+    {t:"16:00", label:"Move round 4", note:"Move finished work, load every Ready pile for the 5–8 pm crew", kind:"move"},
+    {t:"16:30", label:"End of Day Count", note:"Count every pile before leaving (what the evening crew starts with)", kind:"count_eod"},
+    {t:"16:55", label:"Close out", note:"Look over Today: who hit 40, the Watch box, Issues", kind:"close"}
+  ],
+  depts: [
+    {id:"pi", name:"Production Initiated"},
+    {id:"fc", name:"Finish Cut Complete", startFromPiles:true, groups:[
+      {id:"A", title:"Palmer Group", kind:"pile", items:["Palmer","Plug","Sleeve","Weights"]},
+      {id:"B", title:"Stations", kind:"pile", items:["Inlay","Rough Turn","Wrap","Hilma (Glue)"]}]},
+    {id:"sa", name:"Shafts Assembled", startFromPiles:true, groups:[
+      {id:"C", title:"Shafts Assembled", kind:"pile", items:["Marlone","Creed"]}]},
+    {id:"sp", name:"Surface Prep", startFromPiles:true, groups:[
+      {id:"Dp", title:"Piles", kind:"pile", items:["Pre Surface Prep","Surface Prep Ready"]},
+      {id:"D", title:"Done by person", kind:"people", items:["Dylan","Ivan","Amber"]}]},
+    {id:"ps", name:"Pre-Spray (Seal)", startFromPiles:true, groups:[
+      {id:"E", title:"Pre-Spray (Seal)", kind:"pile", items:["Cue/Shaft","Shafts"]}]},
+    {id:"fs", name:"Final Spray (Clear)", startFromPiles:true, groups:[
+      {id:"F", title:"Final Spray (Clear)", kind:"pile", items:["Cue/Shaft","Shaft","JP","Ext"]}]},
+    {id:"bf", name:"Buffing"},
+    {id:"qc", name:"Final QC"}
+  ]
+};
+
+let store = load();
+let curDate = todayStr();
+let tab = "today";
+let unlocked = false;
+
+function load(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(raw){ const s = JSON.parse(raw); if(s && s.config && s.days){ if(!s.config.schedule) s.config.schedule=JSON.parse(JSON.stringify(DEFAULT_CONFIG.schedule));
+      s.config.schedule.forEach(it=>{ if(it.label==="Quick check"){ it.label="Afternoon Count"; it.note="Count every pile again after lunch"; it.kind="count_pm"; } });
+      s.config.depts.forEach(dp=>{ if(dp.id==="sp") dp.startFromPiles=true; });
+      s.config.schedule.forEach(it=>{ if(!it.kind && (it.label==="Sweep"||/^Move round/.test(it.label))) it.kind="move";
+        if(it.label==="Close out"){ it.kind="close"; it.note="Look over Today: who hit 40, the Watch box, Issues"; } });
+      if(!s.config.schedule.some(it=>it.kind==="count_eod")){
+        s.config.schedule.forEach(it=>{ if(it.label==="Move round 4" && it.t==="16:30") it.t="16:00"; if(it.label==="Close out" && it.t==="16:45") it.t="16:55"; });
+        s.config.schedule.push({t:"16:30", label:"End of Day Count", note:"Count every pile before leaving (what the evening crew starts with)", kind:"count_eod"});
+        s.config.schedule.sort((a,b)=>a.t<b.t?-1:a.t>b.t?1:0); }
+      return s; } }
+  }catch(e){}
+  return {version:APP_VERSION, config:JSON.parse(JSON.stringify(DEFAULT_CONFIG)), days:{}, lastBackup:null};
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(store)); }
+  catch(e){ toast("Could not save on this device!"); }
+}
+if(navigator.storage && navigator.storage.persist){ navigator.storage.persist().catch(()=>{}); }
+
+/* ===================== Dates ===================== */
+function pad2(n){return String(n).padStart(2,"0")}
+function toStr(d){return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())}
+function fromStr(s){const [y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)}
+function todayStr(){return toStr(new Date())}
+function addDays(s,n){const d=fromStr(s);d.setDate(d.getDate()+n);return toStr(d)}
+function monday(s){const d=fromStr(s);const w=(d.getDay()+6)%7;d.setDate(d.getDate()-w);return toStr(d)}
+function niceDate(s){const d=fromStr(s);return (d.getMonth()+1)+"/"+d.getDate()+"/"+d.getFullYear()}
+function dayName(s){return fromStr(s).toLocaleDateString("en-US",{weekday:"long"})}
+function shortDay(s){const d=fromStr(s);return d.toLocaleDateString("en-US",{weekday:"short"})+" "+(d.getMonth()+1)+"/"+d.getDate()}
+
+/* ===================== Data helpers ===================== */
+const cfg = () => store.config;
+const sum = a => a.reduce((s,v)=>s+(v==null||v===""?0:+v),0);
+const has = v => v!==null && v!==undefined && v!=="";
+const f = v => has(v) ? v : "–";
+
+function blankDept(){return {start:null, received:null, added:[null,null,null], completed:null, items:{}}}
+function day(s, create){
+  if(!store.days[s] && create){ store.days[s] = {depts:{}, issues:[]}; }
+  return store.days[s];
+}
+function deptData(s, id, create){
+  const d = day(s, create); if(!d) return null;
+  if(!d.depts[id] && create) d.depts[id] = blankDept();
+  return d.depts[id] || null;
+}
+function prevDayWithData(s){
+  const keys = Object.keys(store.days).filter(k=>k<s).sort();
+  return keys.length ? keys[keys.length-1] : null;
+}
+function itemKey(gid,name){return gid+"|"+name}
+function hm(t){const [h,m]=t.split(":").map(Number);const ap=h>=12?"PM":"AM";return ((h+11)%12+1)+":"+String(m).padStart(2,"0")+" "+ap}
+function minsOf(t){const [h,m]=t.split(":").map(Number);return h*60+m}
+function nowMins(){const d=new Date();return d.getHours()*60+d.getMinutes()}
+function schedDone(s,i){const d=day(s,false); if(!d) return null; const it=cfg().schedule[i];
+  if(it.kind==="count") return d.countFinished||null;
+  if(it.kind==="count_pm") return d.pmFinished||null;
+  if(it.kind==="count_eod") return d.eodFinished||null;
+  if(it.kind==="move") return d.moves&&d.moves[it.label]&&d.moves[it.label].fin||null;
+  return d.sched&&d.sched[i]?d.sched[i]:null;}
+function schedState(s,i){const done=schedDone(s,i); if(done) return "done";
+  if(s<todayStr()) return "missed"; if(s>todayStr()) return "later";
+  const t=minsOf(cfg().schedule[i].t), n=nowMins();
+  if(n>t+20) return "late"; if(n>=t-10) return "now"; return "later";}
+function nextItem(){if(curDate!==todayStr()) return null; const sc=cfg().schedule;
+  for(let i=0;i<sc.length;i++){const st=schedState(curDate,i); if(st==="late"||st==="now") return i;}
+  for(let i=0;i<sc.length;i++){if(schedState(curDate,i)==="later") return i;} return null;}
+function clock(ms){return new Date(ms).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}
+const COUNTS={
+  am:{name:"Morning Count",at:"8:00",hint:"8:00 · sets Start of Day",a:"countStarted",b:"countFinished"},
+  pm:{name:"Afternoon Count",at:"1:00",hint:"1:00 · after lunch",a:"pmStarted",b:"pmFinished"},
+  eod:{name:"End of Day Count",at:"4:30",hint:"4:30 · before leaving",a:"eodStarted",b:"eodFinished"}};
+function cKeys(mode){const c=COUNTS[mode]||COUNTS.am; return [c.a,c.b]}
+function countTimes(s,mode){const d=day(s,false); const [a,b]=cKeys(mode); if(!d||!d[a]) return "";
+  let t="Count started "+clock(d[a]);
+  if(d[b]){const m=Math.max(1,Math.round((d[b]-d[a])/60000)); t+=" · finished "+clock(d[b])+" ("+m+" min)";}
+  return t;}
+function pmTotal(def,s,mode){mode=mode||"pm"; const d=day(s,false); if(!d||!d[mode]||!d[mode][def.id]) return null; const x=d[mode][def.id];
+  const piles=[]; pilesOf(def).forEach(g=>g.items.forEach(n=>{const v=x[itemKey(g.id,n)]; if(has(v)) piles.push(+v)}));
+  if(def.startFromPiles) return piles.length?sum(piles):null;
+  if(has(x.start)) return +x.start; return piles.length?sum(piles):null;}
+
+function pilesOf(def){return (def.groups||[]).filter(g=>g.kind==="pile")}
+function peopleOf(def){return (def.groups||[]).find(g=>g.kind==="people")}
+
+function startOf(def, dd){
+  if(!dd) return null;
+  if(def.startFromPiles){
+    const vals=[]; pilesOf(def).forEach(g=>g.items.forEach(n=>{const v=dd.items[itemKey(g.id,n)]; if(has(v)) vals.push(+v)}));
+    if(vals.length) return sum(vals);
+  }
+  return has(dd.start) ? +dd.start : null;
+}
+function completedOf(def, dd){
+  if(!dd) return null;
+  const p = peopleOf(def);
+  if(p){ const vals=p.items.map(n=>dd.items[itemKey(p.id,n)]).filter(has); return vals.length?sum(vals):null; }
+  if(has(dd.movedAuto)) return +dd.movedAuto;
+  return has(dd.completed) ? +dd.completed : null;
+}
+function recvOf(dd){ if(!dd) return null; return has(dd.received)? +dd.received : (has(dd.receivedAuto)? +dd.receivedAuto : null); }
+function inOf(dd){ if(!dd) return 0; return sum([recvOf(dd), ...dd.added]); }
+
+/* ===== moves: what the tracker moved out of each DONE spot, per round ===== */
+function moveRounds(){return cfg().schedule.filter(it=>it.kind==="move")}
+function moveKeys(def){const p=peopleOf(def); return p? p.items.map(n=>itemKey(p.id,n)) : [def.id]}
+function movedIn(s,label,def){const d=day(s,false); const r=d&&d.moves&&d.moves[label]; if(!r) return null;
+  const vals=moveKeys(def).map(k=>r.v[k]).filter(has); return vals.length?sum(vals):null;}
+function recalcMoves(s){
+  const d=day(s,false); if(!d) return;
+  const rounds=moveRounds().map(it=>d.moves&&d.moves[it.label]).filter(Boolean);
+  let upstream=null;
+  cfg().depts.forEach((def,i)=>{
+    const any=rounds.length>0;
+    let dd=deptData(s,def.id,false);
+    if(!dd && any) dd=deptData(s,def.id,true);
+    if(dd){
+      const p=peopleOf(def);
+      if(p){ p.items.forEach(n=>{const k=itemKey(p.id,n); const vals=rounds.map(r=>r.v[k]).filter(has); if(vals.length) dd.items[k]=sum(vals); else if(dd.itemsAuto&&dd.itemsAuto[k]) delete dd.items[k];
+          dd.itemsAuto=dd.itemsAuto||{}; dd.itemsAuto[k]=vals.length>0; }); }
+      const vals=rounds.map(r=>{const v=moveKeys(def).map(k=>r.v[k]).filter(has); return v.length?sum(v):null}).filter(x=>x!=null);
+      dd.movedAuto = vals.length? sum(vals) : null;
+      dd.receivedAuto = (i>0 && upstream!=null) ? upstream : null;
+      upstream = dd.movedAuto;
+    } else upstream=null;
+  });
+  save();
+}
+/* share of the working day (8–12, 1–5) gone by now */
+function workedFrac(){const n=nowMins(); const a=Math.max(0,Math.min(n,720)-480), b=Math.max(0,Math.min(n,1020)-780); return Math.min(1,(a+b)/480)}
+function totalOf(def, dd){ const s=startOf(def,dd); return s==null?null:s+inOf(dd); }
+function leftOf(def, dd){ const t=totalOf(def,dd), c=completedOf(def,dd); return (t==null||c==null)?null:t-c; }
+
+/* carry yesterday's Left Over into today's Start (only for departments that type Start by hand) */
+function suggestedStart(def, s){
+  if(def.startFromPiles) return null;
+  const p = prevDayWithData(s); if(!p) return null;
+  const dd = deptData(p, def.id, false);
+  return leftOf(def, dd);
+}
+
+/* ===================== UI basics ===================== */
+function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",2200)}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+
+function header(){
+  document.getElementById("dayname").textContent = dayName(curDate) + (curDate===todayStr()?"":"");
+  document.getElementById("datestr").textContent = niceDate(curDate) + (curDate===todayStr()?" · today":"");
+  document.getElementById("todayBtn").style.display = curDate===todayStr() ? "none" : "";
+}
+function shiftDay(n){curDate=addDays(curDate,n);render()}
+function goToday(){curDate=todayStr();render()}
+
+function tabs(){
+  const t=[["today","Today"],["schedule","Schedule"],["count","Counts"],["week","This Week"],["issues","Issues"],["settings","Settings"]];
+  const d=day(curDate,false);
+  document.getElementById("tabs").innerHTML=t.map(([k,l])=>{
+    if(k==="schedule"){const sc=cfg().schedule;const dn=sc.filter((_,i)=>schedDone(curDate,i)).length;const late=sc.some((_,i)=>schedState(curDate,i)==="late");
+      l+=` <span style="color:${late?'var(--bad)':'var(--mute)'};font-size:13px">${dn}/${sc.length}</span>`;}
+    if(k==="count"&&d&&(d.countStarted||d.pmStarted||d.eodStarted)) l+=` <span style="color:var(--warn);font-size:13px">· ${["am","pm","eod"].filter(m=>d[COUNTS[m].b]).length}/3</span>`;
+    return `<button class="${k===tab?'on':''}" onclick="go('${k}')">${l}</button>`}).join("");
+}
+function go(k,mode){tab=k; if(k==="count"){ step=0; cbuf="";
+    if(mode) countMode=mode;
+    else { const n=nowMins(); countMode = curDate!==todayStr() ? "am" : n>=16*60+15 ? "eod" : n>=12*60+30 ? "pm" : "am"; } }
+  render()}
+
+/* ===================== Today ===================== */
+function viewToday(){
+  const T = cfg().targetDay;
+  const rows = cfg().depts.map(def=>({def, dd:deptData(curDate,def.id,false)}));
+  const entered = rows.filter(r=>completedOf(r.def,r.dd)!=null);
+  const hit = entered.filter(r=>completedOf(r.def,r.dd)>=T).length;
+  const inb = sum(rows.map(r=>startOf(r.def,r.dd)));
+  const done = sum(rows.map(r=>completedOf(r.def,r.dd)));
+  let watch = null, worst = -1, watchTxt="";
+  const md=midDay(), exp=paceExp();
+  if(md){ rows.forEach(r=>{const c=completedOf(r.def,r.dd); if(c!=null && exp-c>0 && exp-c>worst){worst=exp-c;watch=r}});
+    if(watch) watchTxt=`behind pace by ${worst} (${completedOf(watch.def,watch.dd)} done, ${exp} by now)`; }
+  else { rows.forEach(r=>{const w=leftOf(r.def,r.dd); const c=completedOf(r.def,r.dd);
+    if(w!=null && c!=null && c<T && w>worst){worst=w;watch=r}});
+    if(watch) watchTxt=`${worst} waiting, ${completedOf(watch.def,watch.dd)} done`; }
+  const onPace = rows.filter(r=>{const c=completedOf(r.def,r.dd); return c!=null && (c>=T || c>=exp)}).length;
+  let h = "";
+  if(!day(curDate,false)) h += `<div class="note">Nothing entered for ${dayName(curDate)} yet. Start with the <b>Morning Count</b> on the Counts tab.</div>`;
+  const ni=nextItem();
+  if(ni!=null){const it=cfg().schedule[ni], st=schedState(curDate,ni);
+    h+=`<button class="nextbar ${st}" onclick="go('schedule')"><span><b>${st==="late"?"Overdue":st==="now"?"Now":"Next"}: ${esc(it.label)}</b> at ${hm(it.t)}<small>${esc(it.note)}</small></span><span class="go">Schedule ›</span></button>`;}
+  { const lines=["am","pm","eod"].map(m=>{const t=countTimes(curDate,m); return t?`${COUNTS[m].name}: <b style="color:var(--warn)">${t.replace("Count started ","started ")}</b>`:""}).filter(Boolean);
+    if(lines.length) h += `<div class="note">${lines.join("<br>")}</div>`; }
+  if(false){ const am="",pm="";
+    if(am||pm) h += `<div class="note">${am?`Morning count: <b style="color:var(--warn)">${am.replace("Count started ","started ")}</b>`:""}${am&&pm?"<br>":""}${pm?`Afternoon count: <b style="color:var(--warn)">${pm.replace("Count started ","started ")}</b>`:""}</div>`; }
+  h += `<div class="kpis">
+    ${md?`<div class="kpi"><div class="l">On pace</div><div class="v">${onPace} / ${cfg().depts.length}</div><div class="s">${exp} each by now · ${hit} already at ${T}</div></div>`:`<div class="kpi"><div class="l">On target</div><div class="v">${hit} / ${cfg().depts.length}</div><div class="s">departments at ${T}+</div></div>`}
+    <div class="kpi"><div class="l">Tickets in building</div><div class="v">${inb||"–"}</div><div class="s">at start of day</div></div>
+    <div class="kpi"><div class="l">Completed${curDate===todayStr()&&workedFrac()<1?" so far":""}</div><div class="v">${done||"–"}</div><div class="s">all departments${curDate===todayStr()&&workedFrac()>0&&workedFrac()<1?` · pace ${Math.round(cfg().targetDay*cfg().depts.length*workedFrac())}`:""}</div></div>
+    <div class="kpi"><div class="l">Watch</div>${watch?`<div class="v" style="font-size:18px;margin-top:8px">${esc(watch.def.name)}</div><div class="s">${watchTxt}</div>`:`<div class="v" style="font-size:18px;margin-top:8px;color:var(--mute)">–</div><div class="s">fills in after the first move round</div>`}</div>
+  </div><div class="grid">`;
+  rows.forEach((r,i)=>h+=card(r.def,r.dd,i));
+  h+=`</div>`;
+  const d=day(curDate,false);
+  const mr=moveRounds();
+  if(d&&d.moves&&Object.keys(d.moves).length){
+    h+=`<div class="sec" style="margin-top:18px">Finished through the day (moved out of DONE)</div><div class="tablebox"><table><tr><th>Department</th>${mr.map(it=>`<th>${hm(it.t).replace(" AM","").replace(" PM","")}<br><span style="font-weight:400;text-transform:none;letter-spacing:0">${esc(it.label.replace("Move round ","Round "))}</span></th>`).join("")}<th>Total</th><th>Target</th></tr>`;
+    rows.forEach(r=>{const vals=mr.map(it=>movedIn(curDate,it.label,r.def)); const tot=completedOf(r.def,r.dd);
+      h+=`<tr><td>${esc(r.def.name)}</td>${vals.map(v=>v==null?`<td class="e">–</td>`:`<td>${v}</td>`).join("")}<td class="${tot==null?'e':(tot>=T||(md&&tot>=exp))?'g':'r'}"><b>${f(tot)}</b></td><td>${md?exp+" by now / ":""}${T}</td></tr>`;
+      const p=peopleOf(r.def); if(p) p.items.forEach(n=>{const k=itemKey(p.id,n); const pv=mr.map(it=>{const x=d.moves[it.label]; return x&&has(x.v[k])?x.v[k]:null});
+        h+=`<tr><td style="padding-left:30px;color:var(--mute)">${esc(n)}</td>${pv.map(v=>v==null?`<td class="e">–</td>`:`<td style="color:var(--mute)">${v}</td>`).join("")}<td style="color:var(--mute)">${pv.some(has)?sum(pv):"–"}</td><td></td></tr>`;});});
+    h+=`</table></div><div class="hint" style="margin-top:6px">Each round = what was moved out of that department's DONE spot. Moved out of one department = received by the next.</div>`;
+  }
+  if(d&&(d.pm||d.eod)){
+    h+=`<div class="sec" style="margin-top:18px">Piles through the day</div><div class="tablebox"><table><tr><th>Department</th><th>8:00</th><th>1:00</th><th>4:30</th><th>Change</th></tr>`;
+    rows.forEach(r=>{const a=startOf(r.def,r.dd), p=pmTotal(r.def,curDate,"pm"), e=pmTotal(r.def,curDate,"eod"); const last=e!=null?e:p; const ch=(a!=null&&last!=null)?last-a:null;
+      h+=`<tr><td>${esc(r.def.name)}</td><td>${f(a)}</td><td>${f(p)}</td><td>${f(e)}</td><td class="${ch==null?'e':ch>0?'r':ch<0?'g':''}">${ch==null?"–":(ch>0?"+":"")+ch}</td></tr>`});
+    h+=`</table></div><div class="hint" style="margin-top:6px">Change = 8:00 to the latest count. Green = pile went down (work got done). Red = pile grew (more coming in than going out).</div>`;
+  }
+  return h;
+}
+function midDay(){return curDate===todayStr() && workedFrac()>0 && workedFrac()<1}
+function paceExp(){return Math.round(cfg().targetDay*workedFrac())}
+function paceText(c){
+  if(curDate!==todayStr()||c==null) return "tap to enter";
+  const fr=workedFrac(); if(fr<=0||fr>=1) return c>=cfg().targetDay?"hit target":"tap to enter";
+  const exp=Math.round(cfg().targetDay*fr);
+  return c>=exp?`<span style="color:var(--good)">on pace (${exp} by now)</span>`:`<span style="color:var(--bad)">behind pace by ${exp-c}</span>`;
+}
+function card(def, dd, i){
+  const T=cfg().targetDay, c=completedOf(def,dd), pct=c==null?0:Math.min(100,c/T*100);
+  const md=midDay(), exp=paceExp();
+  const ok = c!=null && (c>=T || (md && c>=exp));
+  const col=c==null?"#33415c":ok?"var(--good)":"var(--bad)";
+  const pill=c==null?`<span class="pill none">Not entered</span>`:c>=T?`<span class="pill good">On target</span>`:md?(c>=exp?`<span class="pill good">On pace</span>`:`<span class="pill bad">Behind ${exp-c}</span>`):`<span class="pill bad">Short ${T-c}</span>`;
+  let sub="";
+  (def.groups||[]).forEach(g=>g.items.forEach(n=>{const v=dd?dd.items[itemKey(g.id,n)]:null; if(has(v)) sub+=`<span class="chip ${g.kind==='pile'?'pile':''}">${esc(n)} <b>${v}</b></span>`}));
+  const inn = dd?inOf(dd):0;
+  return `<button class="card" onclick="openDept(${i})">
+    <div class="top"><div><span class="n">${i+1}</span><span class="name">${esc(def.name)}</span></div>${pill}</div>
+    <div class="nums">
+      <div><span>Start</span><b>${f(startOf(def,dd))}</b></div>
+      <div><span>In</span><b>${inn||(dd?"0":"–")}</b></div>
+      <div><span>Done</span><b>${f(c)}</b></div>
+      <div><span>Left</span><b ${leftOf(def,dd)!=null&&leftOf(def,dd)<0?'style="color:var(--warn)" title="More finished than it had: check the counts"':""}>${f(leftOf(def,dd))}</b></div>
+    </div>
+    <div class="bar"><i style="width:${pct}%;background:${col}"></i></div>
+    <div class="barlab"><span>${c==null?"–":c} of ${T}</span><span>${paceText(c)}</span></div>
+    ${sub?`<div class="sub">${sub}</div>`:""}
+  </button>`;
+}
+
+/* ===================== Entry sheet ===================== */
+let cur=null, field=null, buf="";
+function openDept(i){
+  cur=i; buf="";
+  const def=cfg().depts[i];
+  const dd=deptData(curDate,def.id,true);
+  // carry-over: prefill Start from yesterday's Left Over if empty
+  if(!def.startFromPiles && !has(dd.start)){ const s=suggestedStart(def,curDate); if(s!=null){ dd.start=s; save(); toast("Start of Day filled from last day's Left Over"); } }
+  field = fieldOrder()[0];
+  drawSheet(); document.getElementById("scrim").classList.add("on");
+}
+function closeSheet(){document.getElementById("scrim").classList.remove("on"); cleanupDay(curDate); render()}
+function getVal(k){const dd=deptData(curDate,cfg().depts[cur].id,true);
+  if(k.startsWith("added")) return dd.added[+k.slice(5)];
+  if(k.includes("|")) return dd.items[k];
+  return dd[k];}
+function setVal(k,v){const dd=deptData(curDate,cfg().depts[cur].id,true);
+  if(k.startsWith("added")) dd.added[+k.slice(5)]=v;
+  else if(k.includes("|")) dd.items[k]=v;
+  else dd[k]=v; save();}
+function fld(k,label,cls=""){
+  const v=getVal(k); const shown=(field===k&&buf!=="")?buf:f(v);
+  return `<button class="field ${cls} ${field===k?'sel':''}" onclick="pick('${esc(k)}')"><span>${esc(label)}</span><b>${shown}</b></button>`}
+function calc(label,v){return `<div class="field calc"><span>${esc(label)}</span><b>${f(v)}</b></div>`}
+function pick(k){field=k;buf="";drawSheet()}
+function drawSheet(){
+  const def=cfg().depts[cur], dd=deptData(curDate,def.id,true);
+  let h=`<h2>${cur+1}. ${esc(def.name)}</h2><div class="hint">${dayName(curDate)} ${niceDate(curDate)} · tap a box, then type the number. Saves as you type.</div>`;
+  pilesOf(def).forEach(g=>{h+=`<div class="sec">${esc(g.title)} · tickets sitting</div><div class="fields">`+g.items.map(n=>fld(itemKey(g.id,n),n,"pile")).join("")+`</div>`});
+  const ppl=peopleOf(def);
+  if(ppl){h+=`<div class="sec">${esc(ppl.title)}</div><div class="fields">`+ppl.items.map(n=>fld(itemKey(ppl.id,n),n)).join("")+`</div>`}
+  h+=`<div class="sec">Today</div><div class="fields">
+    ${def.startFromPiles?calc("Start of Day (piles)",startOf(def,dd)):fld("start","Start of Day")}
+    ${has(dd.receivedAuto)&&!has(dd.received)?calc("Received (from moves)",dd.receivedAuto):fld("received","Received")}${fld("added0","Added")}${fld("added1","Added")}${fld("added2","Added")}
+    ${ppl?calc("Completed (people)",completedOf(def,dd)):has(dd.movedAuto)?calc("Completed (from moves)",dd.movedAuto):fld("completed","Completed")}
+    ${calc("Total to Work",totalOf(def,dd))}${calc("Left Over",leftOf(def,dd))}</div>`;
+  h+=`<div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="key('${n}')">${n}</button>`).join("")}<button onclick="key('C')">Clear</button><button onclick="key('0')">0</button><button onclick="key('B')">⌫</button></div>
+  <div class="row"><button class="btn grey" onclick="nextField()">Next box ›</button><button class="btn blue" onclick="closeSheet()">Done</button></div>`;
+  document.getElementById("sheet").innerHTML=h;
+}
+function fieldOrder(){
+  const def=cfg().depts[cur], o=[];
+  pilesOf(def).forEach(g=>g.items.forEach(n=>o.push(itemKey(g.id,n))));
+  const ppl=peopleOf(def); if(ppl) ppl.items.forEach(n=>o.push(itemKey(ppl.id,n)));
+  if(!def.startFromPiles) o.push("start");
+  o.push("received","added0","added1","added2"); if(!ppl) o.push("completed");
+  return o;
+}
+function nextField(){const o=fieldOrder();const i=o.indexOf(field);field=o[(i+1)%o.length];buf="";drawSheet()}
+function key(k){
+  if(!field) return;
+  if(k==="C"){buf="";setVal(field,null);drawSheet();return}
+  if(k==="B"){ if(buf===""){const v=getVal(field); buf=has(v)?String(v):"";} buf=buf.slice(0,-1); }
+  else { if(buf==="0") buf=""; if(buf.length>=5) return; buf+=k; }
+  setVal(field, buf===""?null:+buf); drawSheet();
+}
+function cleanupDay(s){
+  const d=store.days[s]; if(!d) return;
+  Object.keys(d.depts).forEach(id=>{const x=d.depts[id];
+    const empty=!has(x.start)&&!has(x.received)&&!x.added.some(has)&&!has(x.completed)&&!Object.values(x.items).some(has);
+    if(empty) delete d.depts[id];});
+  if(!Object.keys(d.depts).length && !d.issues.length && !d.countStarted && !d.pmStarted && !d.pm && !d.eodStarted && !d.eod && !(d.moves&&Object.keys(d.moves).length) && !(d.sched&&Object.keys(d.sched).length)) delete store.days[s];
+  save();
+}
+
+/* ===================== Morning count ===================== */
+let step=0, cbuf="", countMode="am";
+function countSteps(){
+  const s=[];
+  cfg().depts.forEach(def=>{
+    if(def.startFromPiles) pilesOf(def).forEach(g=>g.items.forEach(n=>s.push({def,label:g.title+": "+n,k:itemKey(g.id,n)})));
+    else { pilesOf(def).forEach(g=>g.items.forEach(n=>s.push({def,label:n,k:itemKey(g.id,n)}))); s.push({def,label:"Tickets on hand (Start of Day)",k:"start"}); }
+  });
+  return s;
+}
+function cget(st){
+  if(countMode!=="am"){const d=day(curDate,false); const m=countMode; return d&&d[m]&&d[m][st.def.id]?d[m][st.def.id][st.k]:null;}
+  const dd=deptData(curDate,st.def.id,false); if(!dd) return null; return st.k==="start"?dd.start:dd.items[st.k]}
+function cset(st,v){
+  const d=day(curDate,true); const [a]=cKeys(countMode);
+  if(countMode!=="am"){ const m=countMode; d[m]=d[m]||{}; d[m][st.def.id]=d[m][st.def.id]||{}; d[m][st.def.id][st.k]=v; }
+  else { const dd=deptData(curDate,st.def.id,true); if(st.k==="start") dd.start=v; else dd.items[st.k]=v; }
+  if(!d[a] && has(v)) d[a]=Date.now(); save()}
+function viewCount(){
+  const s=countSteps(); if(step>=s.length) return countDone(s);
+  const st=s[step]; const v=cget(st); const shown=cbuf!==""?cbuf:f(v);
+  const sug = countMode==="am" && st.k==="start" && !has(v) ? suggestedStart(st.def,curDate) : null;
+  const ct=countTimes(curDate,countMode);
+  return modeBar()+`<div class="stepbox"><div class="prog">${s.map((_,i)=>`<i class="${i<=step?'d':''}"></i>`).join("")}</div>
+  <div style="color:var(--mute);font-size:13px">Step ${step+1} of ${s.length} · ${ct?`<span style="color:var(--warn)">${ct}</span>`:(countMode==="pm"?"after lunch":countMode==="eod"?"before leaving, after the Ready piles are loaded":"count before anything moves")+" · the clock starts at the first number"}</div>
+  <h2 style="margin:6px 0 0">${esc(st.def.name)}</h2><div style="color:var(--mute)">${esc(countMode!=="am"&&st.k==="start"?"Tickets on hand":st.label)}</div>
+  ${countMode!=="am"?`<div style="color:var(--mute);font-size:12px;margin-top:4px">8:00 count: ${f(amVal(st))}${countMode==="eod"?` · 1:00 count: ${f(snapVal(st,"pm"))}`:""}</div>`:""}
+  <div class="big">${shown}</div>
+  ${sug!=null?`<div style="text-align:center;margin-bottom:6px"><button class="btn grey" style="flex:none;padding:10px 14px" onclick="useSug(${sug})">Use last day's Left Over: ${sug}</button></div>`:""}
+  <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="ckey('${n}')">${n}</button>`).join("")}<button onclick="ckey('C')">Clear</button><button onclick="ckey('0')">0</button><button onclick="ckey('B')">⌫</button></div>
+  <div class="row"><button class="btn grey" onclick="cmove(-1)">‹ Back</button><button class="btn blue" onclick="cmove(1)">${step===s.length-1?'Finish':'Next ›'}</button></div></div>`;
+}
+function amVal(st){const dd=deptData(curDate,st.def.id,false); if(!dd) return null; return st.k==="start"?dd.start:dd.items[st.k]}
+function snapVal(st,m){const d=day(curDate,false); return d&&d[m]&&d[m][st.def.id]?d[m][st.def.id][st.k]:null}
+function modeBar(){
+  return `<div class="modebar">`+["am","pm","eod"].map(m=>{const t=countTimes(curDate,m), done=day(curDate,false)&&day(curDate,false)[COUNTS[m].b];
+    return `<button class="${countMode===m?'on':''}" onclick="go('count','${m}')"><b>${done?"✓ ":""}${COUNTS[m].name}</b><small>${t?t.replace("Count started ","").replace(" · finished "," – "):COUNTS[m].hint}</small></button>`}).join("")+`</div>`}
+function useSug(v){const st=countSteps()[step]; cset(st,v); cmove(1)}
+function ckey(k){const st=countSteps()[step];
+  if(k==="C"){cbuf="";cset(st,null);render();return}
+  if(k==="B"){ if(cbuf===""){const v=cget(st);cbuf=has(v)?String(v):"";} cbuf=cbuf.slice(0,-1); }
+  else { if(cbuf==="0") cbuf=""; if(cbuf.length>=5) return; cbuf+=k; }
+  cset(st,cbuf===""?null:+cbuf); render();}
+function cmove(n){cbuf=""; step=Math.max(0,step+n); render()}
+function countDone(s){
+  const missing=s.filter(st=>!has(cget(st))).length;
+  const [a,b]=cKeys(countMode); const d=day(curDate,false); if(d&&d[a]&&!d[b]){d[b]=Date.now(); save(); tabs();}
+  return modeBar()+`<div class="stepbox" style="text-align:center"><h2>${COUNTS[countMode].name} ${missing?"saved":"done"}</h2>
+  <p style="color:var(--mute)">${missing?missing+" boxes were left blank.":"Every pile counted for "+dayName(curDate)+"."}</p>
+  ${countTimes(curDate,countMode)?`<p style="color:var(--warn);font-weight:700">${countTimes(curDate,countMode)}</p>`:""}
+  <div class="row"><button class="btn grey" onclick="step=0;render()">Go through again</button><button class="btn blue" onclick="go('today')">See today</button></div></div>`;
+}
+
+/* ===================== Schedule ===================== */
+function viewSchedule(){
+  const sc=cfg().schedule;
+  let h=`<div class="note">${dayName(curDate)} ${niceDate(curDate)} · tap an item to do it. Counts and move rounds tick themselves when you finish them; the time is saved.</div><div class="sched">`;
+  sc.forEach((it,i)=>{const st=schedState(curDate,i), done=schedDone(curDate,i);
+    const tag={done:"Done "+(done?clock(done):""),late:"Overdue",now:"Now",later:"",missed:"Not done"}[st];
+    h+=`<button class="srow ${st}" onclick="tickSched(${i})">
+      <span class="tm">${hm(it.t)}</span>
+      <span class="box">${st==="done"?"✓":""}</span>
+      <span class="tx"><b>${esc(it.label)}</b><small>${esc(it.note)}</small></span>
+      <span class="tag">${tag}</span></button>`;});
+  return h+`</div>`;
+}
+function tickSched(i){
+  const it=cfg().schedule[i];
+  if(it.kind==="count"){ go("count","am"); return; }
+  if(it.kind==="count_pm"){ go("count","pm"); return; }
+  if(it.kind==="count_eod"){ go("count","eod"); return; }
+  if(it.kind==="move"){ openMove(it.label); return; }
+  if(it.kind==="close"){ const d0=day(curDate,true); d0.sched=d0.sched||{}; if(!d0.sched[i]){ d0.sched[i]=Date.now(); save(); } go("today"); return; }
+  const d=day(curDate,true); d.sched=d.sched||{};
+  if(d.sched[i]){ if(!confirmTwice()) return; delete d.sched[i]; toast("Unticked"); }
+  else { d.sched[i]=Date.now(); toast(it.label+" done at "+clock(d.sched[i])); }
+  save(); render();
+}
+
+/* ===================== Move round ===================== */
+let moveLabel=null, mstep=0, mbuf="";
+function openMove(label){moveLabel=label; mstep=0; mbuf=""; tab="move"; render();}
+function moveSteps(){const s=[]; cfg().depts.forEach((def,i)=>{const p=peopleOf(def);
+  const last=i===cfg().depts.length-1;
+  if(p) p.items.forEach(n=>s.push({def,k:itemKey(p.id,n),label:"Finished by "+n}));
+  else s.push({def,k:def.id,label:last?"Finished (passed QC)":"Finished · moved out of DONE"});}); return s;}
+function mget(st){const d=day(curDate,false); const r=d&&d.moves&&d.moves[moveLabel]; return r?r.v[st.k]:null}
+function mset(st,v){const d=day(curDate,true); d.moves=d.moves||{}; const r=d.moves[moveLabel]=d.moves[moveLabel]||{at:Date.now(),v:{}}; r.v[st.k]=v; recalcMoves(curDate);}
+function viewMove(){
+  const it=cfg().schedule.find(x=>x.label===moveLabel); const s=moveSteps();
+  if(mstep>=s.length){
+    const d=day(curDate,true); d.moves=d.moves||{}; const r=d.moves[moveLabel]=d.moves[moveLabel]||{at:Date.now(),v:{}}; if(!r.fin){r.fin=Date.now(); save();}
+    const lines=cfg().depts.map(def=>{const v=movedIn(curDate,moveLabel,def); return `<tr><td>${esc(def.name)}</td><td>${f(v)}</td><td>${f(completedOf(def,deptData(curDate,def.id,false)))}</td></tr>`}).join("");
+    return `<div class="stepbox"><h2 style="margin-top:0">${esc(moveLabel)} done · ${clock(r.fin)}</h2>
+      <div class="tablebox" style="margin:10px 0"><table><tr><th>Department</th><th>This round</th><th>Today so far</th></tr>${lines}</table></div>
+      <div class="row"><button class="btn grey" onclick="mstep=0;render()">Go back through</button><button class="btn blue" onclick="go('today')">See today</button></div></div>`;
+  }
+  const st=s[mstep]; const v=mget(st); const shown=mbuf!==""?mbuf:f(v);
+  const so=completedOf(st.def,deptData(curDate,st.def.id,false));
+  return `<div class="stepbox"><div class="prog">${s.map((_,i)=>`<i class="${i<=mstep?'d':''}"></i>`).join("")}</div>
+  <div style="color:var(--mute);font-size:13px">${esc(moveLabel)} (${it?hm(it.t):""}) · step ${mstep+1} of ${s.length} · how many did you take out of the DONE spot?</div>
+  <h2 style="margin:6px 0 0">${esc(st.def.name)}</h2><div style="color:var(--mute)">${esc(st.label)}</div>
+  <div style="color:var(--mute);font-size:12px;margin-top:4px">Today so far: ${f(so)} of ${cfg().targetDay}</div>
+  <div class="big" style="color:var(--accent)">${shown}</div>
+  <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="mkey('${n}')">${n}</button>`).join("")}<button onclick="mkey('C')">Clear</button><button onclick="mkey('0')">0</button><button onclick="mkey('B')">⌫</button></div>
+  <div class="row"><button class="btn grey" onclick="mmove(-1)">‹ Back</button><button class="btn blue" onclick="mmove(1)">${mstep===s.length-1?'Finish':(has(v)||mbuf!==""?'Next ›':'None · Next ›')}</button></div></div>`;
+}
+function mkey(k){const st=moveSteps()[mstep];
+  if(k==="C"){mbuf="";mset(st,null);render();return}
+  if(k==="B"){ if(mbuf===""){const v=mget(st);mbuf=has(v)?String(v):"";} mbuf=mbuf.slice(0,-1); }
+  else { if(mbuf==="0") mbuf=""; if(mbuf.length>=4) return; mbuf+=k; }
+  mset(st,mbuf===""?null:+mbuf); render();}
+function mmove(n){ const st=moveSteps()[mstep]; if(n>0 && st && !has(mget(st))) mset(st,0); mbuf=""; mstep=Math.max(0,mstep+n); render(); }
+
+/* ===================== Week ===================== */
+function viewWeek(){
+  const T=cfg().targetDay, W=cfg().targetWeek, m=monday(curDate);
+  const days=[0,1,2,3,4,5].map(i=>addDays(m,i));
+  const showSat = !!day(days[5],false);
+  const cols = showSat?days:days.slice(0,5);
+  let h=`<div class="note">Week of ${niceDate(m)} · Completed each day vs ${T}, week vs ${W}. Use ‹ › at the top to change weeks.</div>`;
+  // bottleneck: most days short with work waiting
+  let flag=null,fs=-1;
+  cfg().depts.forEach(def=>{let shortDays=0,lastLeft=null;
+    cols.forEach(s=>{const dd=deptData(s,def.id,false);const c=completedOf(def,dd);const l=leftOf(def,dd);if(c!=null&&c<T&&l!=null&&l>0)shortDays++;if(l!=null)lastLeft=l;});
+    const score=shortDays*1000+(lastLeft||0); if(shortDays>0&&score>fs){fs=score;flag={def,shortDays,lastLeft}}});
+  if(flag) h+=`<div class="flag"><b>${esc(flag.def.name)}</b> was short of ${T} on ${flag.shortDays} day${flag.shortDays>1?"s":""} with work waiting${flag.lastLeft!=null?` (${flag.lastLeft} left over last entry)`:""}. Likely bottleneck.</div>`;
+  h+=`<div class="tablebox"><table><tr><th>Department</th>${cols.map(s=>`<th>${shortDay(s)}</th>`).join("")}<th>Week</th><th>of ${W}</th></tr>`;
+  cfg().depts.forEach(def=>{const vals=cols.map(s=>completedOf(def,deptData(s,def.id,false)));const t=sum(vals);const any=vals.some(v=>v!=null);
+    h+=`<tr><td>${esc(def.name)}</td>${vals.map(v=>v==null?`<td class="e">–</td>`:`<td class="${v>=T?'g':'r'}">${v}</td>`).join("")}<td><b>${any?t:"–"}</b></td><td class="${any?(t>=W?'g':''):'e'}">${any?Math.round(t/W*100)+"%":"–"}</td></tr>`});
+  h+=`</table></div>`;
+  // people
+  const people=[]; cfg().depts.forEach(def=>{const p=peopleOf(def); if(p) p.items.forEach(n=>people.push({def,g:p,n}))});
+  if(people.length){
+    h+=`<div class="sec">People this week (completed)</div><div class="tablebox"><table><tr><th>Person</th>${cols.map(s=>`<th>${shortDay(s)}</th>`).join("")}<th>Week</th></tr>`;
+    people.forEach(p=>{const vals=cols.map(s=>{const dd=deptData(s,p.def.id,false);return dd?dd.items[itemKey(p.g.id,p.n)]:null});const any=vals.some(has);
+      h+=`<tr><td>${esc(p.n)} <span style="color:var(--mute);font-size:12px">${esc(p.def.name)}</span></td>${vals.map(v=>has(v)?`<td>${v}</td>`:`<td class="e">–</td>`).join("")}<td><b>${any?sum(vals):"–"}</b></td></tr>`});
+    h+=`</table></div>`;
+  }
+  // piles
+  h+=`<div class="sec">Tickets in building (start of day)</div><div class="tablebox"><table><tr><th>Department</th>${cols.map(s=>`<th>${shortDay(s)}</th>`).join("")}</tr>`;
+  h+=`<tr><td style="color:var(--accent)">Schedule done</td>${cols.map(s=>{const sc=cfg().schedule;const n=sc.filter((_,i)=>schedDone(s,i)).length;return day(s,false)?`<td style="color:${n===sc.length?'var(--good)':'var(--text)'}">${n}/${sc.length}</td>`:`<td class="e">–</td>`}).join("")}</tr>`;
+  h+=`<tr><td style="color:var(--warn)">Morning count</td>${cols.map(s=>{const d=day(s,false);return d&&d.countStarted?`<td style="color:var(--warn)">${clock(d.countStarted)}${d.countFinished?"–"+clock(d.countFinished):""}</td>`:`<td class="e">–</td>`}).join("")}</tr>`;
+  h+=`<tr><td style="color:var(--warn)">Afternoon count</td>${cols.map(s=>{const d=day(s,false);return d&&d.pmStarted?`<td style="color:var(--warn)">${clock(d.pmStarted)}${d.pmFinished?"–"+clock(d.pmFinished):""}</td>`:`<td class="e">–</td>`}).join("")}</tr>`;
+  h+=`<tr><td style="color:var(--warn)">End of day count</td>${cols.map(s=>{const d=day(s,false);return d&&d.eodStarted?`<td style="color:var(--warn)">${clock(d.eodStarted)}${d.eodFinished?"–"+clock(d.eodFinished):""}</td>`:`<td class="e">–</td>`}).join("")}</tr>`;
+  cfg().depts.forEach(def=>{const vals=cols.map(s=>startOf(def,deptData(s,def.id,false)));
+    h+=`<tr><td>${esc(def.name)}</td>${vals.map(v=>v==null?`<td class="e">–</td>`:`<td>${v}</td>`).join("")}</tr>`});
+  return h+`</table></div>`;
+}
+
+/* ===================== Issues ===================== */
+function viewIssues(){
+  const d=day(curDate,false); const list=d?d.issues:[];
+  return `<div class="note">Issues for ${dayName(curDate)} ${niceDate(curDate)}: rush jobs, rework, breakdowns, waiting on parts.</div>
+  <textarea id="it" placeholder="What happened?"></textarea>
+  <div class="row" style="max-width:260px"><button class="btn blue" onclick="addIssue()">Add to log</button></div>
+  <div class="log">${list.length?list.map((x,i)=>`<div><div><small>${esc(x.t)}</small>${esc(x.x)}</div><button onclick="delIssue(${i})" aria-label="Delete">✕</button></div>`).join(""):`<div style="color:var(--mute)">Nothing logged.</div>`}</div>`;
+}
+function addIssue(){const v=document.getElementById("it").value.trim(); if(!v) return;
+  const d=day(curDate,true); d.issues.unshift({t:new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),x:v}); save(); render();}
+function delIssue(i){const d=day(curDate,false); if(!d) return; d.issues.splice(i,1); cleanupDay(curDate); render();}
+
+/* ===================== Settings (PIN) ===================== */
+let pinbuf="";
+function viewSettings(){
+  if(!unlocked){
+    return `<div class="pinpad"><h2>Manager PIN</h2><div class="dots">${[0,1,2,3].map(i=>`<i class="${i<pinbuf.length?'f':''}"></i>`).join("")}</div>
+    <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="pkey('${n}')">${n}</button>`).join("")}<button onclick="pinbuf='';render()">Clear</button><button onclick="pkey('0')">0</button><button onclick="pinbuf=pinbuf.slice(0,-1);render()">⌫</button></div></div>`;
+  }
+  const c=cfg(); const nDays=Object.keys(store.days).length;
+  const lb=store.lastBackup?new Date(store.lastBackup).toLocaleString("en-US"):"never";
+  return `${c.pin==="2099"?`<div class="flag">The manager PIN is still the starting PIN <b>2099</b>. Change it before handing the iPad over.</div>`:""}
+  <div class="setbox"><h3>Targets</h3>
+    <div class="setrow"><span>Daily target (per department)</span><input type="number" inputmode="numeric" value="${c.targetDay}" onchange="setT('targetDay',this.value)"></div>
+    <div class="setrow"><span>Weekly target (per department)</span><input type="number" inputmode="numeric" value="${c.targetWeek}" onchange="setT('targetWeek',this.value)"></div>
+  </div>
+  <div class="setbox"><h3>Schedule times</h3>
+    ${c.schedule.map((it,i)=>`<div class="setrow"><span>${esc(it.label)}</span><input type="time" value="${it.t}" onchange="setSchedTime(${i},this.value)" style="width:140px"></div>`).join("")}
+  </div>
+  <div class="setbox"><h3>Backup &amp; export</h3>
+    <div class="note" style="margin-bottom:10px">Everything is saved on this iPad only. Save a backup at least once a week. ${nDays} day${nDays===1?"":"s"} saved · last backup: ${lb}</div>
+    <div class="row"><button class="btn green" onclick="exportCSV()">Export to Excel (CSV)</button><button class="btn blue" onclick="backup()">Save backup file</button></div>
+    <div class="row"><button class="btn grey" onclick="document.getElementById('rf').click()">Restore from backup</button></div>
+    <input type="file" id="rf" accept=".json,application/json" style="display:none" onchange="restore(this)">
+  </div>
+  <div class="setbox"><h3>Manager PIN</h3>
+    <div class="setrow"><span>New 4-digit PIN</span><input id="np" type="password" inputmode="numeric" maxlength="4" placeholder="••••"></div>
+    <div class="row"><button class="btn grey" onclick="setPin()">Change PIN</button></div>
+  </div>
+  <div class="setbox"><h3>This day</h3>
+    ${countTimes(curDate,"am")?`<div class="note" style="margin-bottom:10px">Morning: ${countTimes(curDate,"am")}</div><div class="row"><button class="btn grey" onclick="resetCountTime('am')">Reset morning count time</button></div>`:""}
+    ${countTimes(curDate,"pm")?`<div class="note" style="margin:10px 0">Afternoon: ${countTimes(curDate,"pm")}</div><div class="row"><button class="btn grey" onclick="resetCountTime('pm')">Reset afternoon count time</button></div>`:""}
+    ${countTimes(curDate,"eod")?`<div class="note" style="margin:10px 0">End of day: ${countTimes(curDate,"eod")}</div><div class="row"><button class="btn grey" onclick="resetCountTime('eod')">Reset end of day count time</button></div>`:""}
+    <div class="row"><button class="btn red" onclick="clearDay()">Erase ${dayName(curDate)} ${niceDate(curDate)}</button></div>
+  </div>
+  <div class="row" style="max-width:720px"><button class="btn grey" onclick="unlocked=false;pinbuf='';go('today')">Lock settings</button></div>
+  <p style="color:var(--mute);font-size:12px">Production Tracker v${APP_VERSION}</p>`;
+}
+function pkey(k){ if(pinbuf.length>=4) return; pinbuf+=k;
+  if(pinbuf.length===4){ if(pinbuf===cfg().pin){unlocked=true;pinbuf=""} else {toast("Wrong PIN");pinbuf=""} } render();}
+function setT(k,v){const n=parseInt(v,10); if(n>0){cfg()[k]=n; save(); toast("Saved")}}
+function setPin(){const v=document.getElementById("np").value; if(!/^\d{4}$/.test(v)){toast("PIN must be 4 digits");return} cfg().pin=v; save(); toast("PIN changed"); render();}
+function setSchedTime(i,v){ if(!/^\d\d:\d\d$/.test(v)) return; cfg().schedule[i].t=v; cfg().schedule.sort((a,b)=>minsOf(a.t)-minsOf(b.t)); save(); toast("Schedule saved"); render(); }
+function resetCountTime(mode){const d=day(curDate,false); if(!d) return; const [a,b]=cKeys(mode||"am"); delete d[a]; delete d[b]; save(); toast("Count time cleared; it restarts at the next number"); render();}
+function clearDay(){ if(!confirmTwice()) return; delete store.days[curDate]; save(); toast("Day erased"); render(); }
+let _ct=0; function confirmTwice(){ const now=Date.now(); if(now-_ct<2500){_ct=0;return true} _ct=now; toast("Tap again to confirm"); return false; }
+
+/* ===================== Files ===================== */
+async function shareFile(name, text, type){
+  const blob=new Blob([text],{type});
+  try{
+    const file=new File([blob],name,{type});
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:name}); return true; }
+  }catch(e){ if(e && e.name==="AbortError") return false; }
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500); return true;
+}
+function csvCell(v){v=v==null?"":String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+function exportCSV(){
+  const rows=[["Date","Day","Department","Start of Day","Received","Added 1","Added 2","Added 3","Total to Work","Completed","Left Over","Detail"]];
+  Object.keys(store.days).sort().forEach(s=>{
+    cfg().depts.forEach(def=>{const dd=deptData(s,def.id,false); if(!dd) return;
+      const det=(def.groups||[]).flatMap(g=>g.items.filter(n=>has(dd.items[itemKey(g.id,n)])).map(n=>n+"="+dd.items[itemKey(g.id,n)])).join("; ");
+      rows.push([s,dayName(s),def.name,startOf(def,dd),dd.received,dd.added[0],dd.added[1],dd.added[2],totalOf(def,dd),completedOf(def,dd),leftOf(def,dd),det]);});
+    moveRounds().forEach(it=>{const r=store.days[s].moves&&store.days[s].moves[it.label]; if(!r) return;
+      cfg().depts.forEach(def=>{const v=movedIn(s,it.label,def); if(v==null) return;
+        const p=peopleOf(def); const det=p?p.items.filter(n=>has(r.v[itemKey(p.id,n)])).map(n=>n+"="+r.v[itemKey(p.id,n)]).join("; "):"";
+        rows.push([s,dayName(s),"MOVED "+it.label+" ("+hm(it.t)+") – "+def.name,"","","","","","",v,"",det]);});});
+    cfg().schedule.forEach((it,i)=>{const v=schedDone(s,i); if(v) rows.push([s,dayName(s),"SCHEDULE","","","","","","","","",it.label+" ("+hm(it.t)+") done "+clock(v)]);});
+    if(store.days[s].countStarted) rows.push([s,dayName(s),"MORNING COUNT","","","","","","","","",countTimes(s,"am")]);
+    ["pm","eod"].forEach(m=>{ if(store.days[s][m]){ cfg().depts.forEach(def=>{const p=pmTotal(def,s,m); const x=store.days[s][m][def.id]; if(p==null&&!x) return;
+        const det=x?Object.keys(x).filter(k=>has(x[k])).map(k=>(k==="start"?"on hand":k.split("|")[1])+"="+x[k]).join("; "):"";
+        rows.push([s,dayName(s),COUNTS[m].at+" COUNT – "+def.name,p,"","","","","","","",det]);});
+      if(store.days[s][COUNTS[m].a]) rows.push([s,dayName(s),COUNTS[m].name.toUpperCase(),"","","","","","","","",countTimes(s,m)]); } });
+    (store.days[s].issues||[]).forEach(x=>rows.push([s,dayName(s),"ISSUE","","","","","","","","",x.t+" "+x.x]));
+  });
+  shareFile("Production_"+todayStr()+".csv", rows.map(r=>r.map(csvCell).join(",")).join("\r\n"), "text/csv");
+}
+async function backup(){
+  const ok=await shareFile("Production_backup_"+todayStr()+".json", JSON.stringify(store,null,1), "application/json");
+  if(ok){store.lastBackup=Date.now(); save(); render();}
+}
+function restore(inp){
+  const file=inp.files[0]; if(!file) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s.config||!s.days) throw 0; store=s; save(); toast("Backup restored"); render(); }catch(e){ toast("That file is not a tracker backup"); } inp.value=""; };
+  r.readAsText(file);
+}
+
+/* ===================== Render ===================== */
+function render(){
+  header(); tabs();
+  const v=document.getElementById("view");
+  v.innerHTML = tab==="today"?viewToday(): tab==="schedule"?viewSchedule(): tab==="move"?viewMove(): tab==="count"?viewCount(): tab==="week"?viewWeek(): tab==="issues"?viewIssues(): viewSettings();
+}
+document.getElementById("scrim").addEventListener("click",e=>{if(e.target.id==="scrim")closeSheet()});
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden && curDate!==todayStr() && tab==="today"){ /* keep user's chosen day */ } });
+/* Desktop: open centred and sized to fit (does nothing on the iPad or in a normal browser tab) */
+function fitWindow(){
+  try{
+    if(!window.matchMedia("(pointer:fine)").matches) return;
+    const sw=screen.availWidth, sh=screen.availHeight; if(sw<1100) return;
+    const w=Math.min(1320,Math.round(sw*0.9)), h=Math.min(1000,Math.round(sh*0.92));
+    const l=(screen.availLeft||0)+Math.round((sw-w)/2), t=(screen.availTop||0)+Math.round((sh-h)/2);
+    window.resizeTo(w,h); window.moveTo(l,t);
+  }catch(e){}
+}
+fitWindow(); window.addEventListener("load",()=>setTimeout(fitWindow,50));
+
+render();
+setInterval(()=>{ if(document.getElementById("scrim").classList.contains("on")) return; if(tab==="today"||tab==="schedule"){ const a=document.activeElement; if(a&&a.tagName==="TEXTAREA") return; render(); } }, 60000);
+
+if("serviceWorker" in navigator && location.protocol==="https:"){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+</script>
+</body>
+</html>
