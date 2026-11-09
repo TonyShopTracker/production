@@ -181,6 +181,9 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 .ri.warn .rdot{background:rgba(242,176,30,.18);color:var(--warn)}
 .ri.good .rdot{background:rgba(55,196,122,.18);color:var(--good)}
 .ri.info .rdot{background:#1c2536;color:var(--accent)}
+.shead{position:sticky;top:-18px;z-index:2;background:var(--panel);margin:-18px -18px 4px;padding:14px 18px 8px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.shead h2{margin:0}
+.shead .btn{flex:none;padding:10px 16px}
 </style>
 </head>
 <body>
@@ -210,7 +213,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.10.3";
+const APP_VERSION = "1.10.4";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -567,7 +570,7 @@ function calc(label,v){return `<div class="field calc"><span>${esc(label)}</span
 function pick(k){field=k;buf="";drawSheet()}
 function drawSheet(){
   const def=cfg().depts[cur], dd=deptData(curDate,def.id,true);
-  let h=`<h2>${cur+1}. ${esc(def.name)}</h2><div class="hint">${dayName(curDate)} ${niceDate(curDate)} · tap a box, then type the number. Saves as you type.</div>`;
+  let h=`<div class="shead"><h2>${cur+1}. ${esc(def.name)}</h2><button class="btn grey" onclick="closeSheet()">‹ Back</button></div><div class="hint">${dayName(curDate)} ${niceDate(curDate)} · tap a box, then type the number. Saves as you type.</div>`;
   pilesOf(def).forEach(g=>{h+=`<div class="sec">${esc(g.title)} · tickets sitting</div><div class="fields">`+g.items.map(n=>fld(itemKey(g.id,n),n,"pile")).join("")+`</div>`});
   const ppl=peopleOf(def);
   if(ppl){h+=`<div class="sec">${esc(ppl.title)}</div><div class="fields">`+ppl.items.map(n=>fld(itemKey(ppl.id,n),n)).join("")+`</div>`}
