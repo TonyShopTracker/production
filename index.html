@@ -210,7 +210,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.10";
+const APP_VERSION = "1.10.1";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -520,7 +520,11 @@ function card(def, dd, i){
   const col=c==null?"#33415c":ok?"var(--good)":"var(--bad)";
   const pill=c==null?`<span class="pill none">Not entered</span>`:c>=T?`<span class="pill good">On target</span>`:md?(c>=exp?`<span class="pill good">On pace</span>`:`<span class="pill bad">Behind ${exp-c}</span>`):`<span class="pill bad">Short ${T-c}</span>`;
   let sub="";
-  (def.groups||[]).forEach(g=>g.items.forEach(n=>{const v=dd?dd.items[itemKey(g.id,n)]:null; if(has(v)) sub+=`<span class="chip ${g.kind==='pile'?'pile':''}">${g.short?esc(g.short)+" ":""}${esc(n)} <b>${v}</b></span>`}));
+  (def.groups||[]).forEach(g=>{ const isOH=g.title==="On hand";
+    g.items.forEach(n=>{const v=dd?dd.items[itemKey(g.id,n)]:null;
+      if(g.kind==="people") sub+=`<span class="chip">${esc(n)} done <b>${has(v)?v:"–"}</b></span>`;
+      else if(has(v)) sub+=`<span class="chip ${g.kind==='pile'?'pile':''}">${g.short?esc(g.short)+" ":""}${esc(n)}${isOH?" on hand":""} <b>${v}</b></span>`;});
+    if(g.kind==="people"||isOH) sub+=`<br>`; });
   const inn = dd?inOf(dd):0;
   return `<button class="card" onclick="openDept(${i})">
     <div class="top"><div><span class="n">${i+1}</span><span class="name">${esc(def.name)}</span></div>${pill}</div>
