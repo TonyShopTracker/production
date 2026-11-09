@@ -188,6 +188,10 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 .ptab th,.ptab td{text-align:center;padding:7px 8px;font-size:14px}
 .ptab th small{display:block;font-weight:400;color:var(--mute);font-size:10px}
 .ptab td:first-child,.ptab th:first-child{text-align:left;font-weight:700}
+.fields.two{grid-template-columns:repeat(2,1fr)}
+.ptab tr.tap{cursor:pointer}
+.ptab tr.tap:active td{background:var(--line)}
+.ptab tr.tap td:first-child{color:var(--accent)}
 </style>
 </head>
 <body>
@@ -217,7 +221,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.11";
+const APP_VERSION = "1.12";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -245,7 +249,7 @@ const DEFAULT_CONFIG = {
     {id:"sp", name:"Surface Prep", startFromPiles:true, groups:[
       {id:"Dp", title:"Piles", kind:"pile", items:["Pre Surface Prep","Surface Prep Ready"]},
       {id:"Dh", title:"On hand", kind:"pile", items:["Casey","Ivan","Amber","George"]},
-      {id:"D", title:"Done by person", kind:"people", items:["Casey","Ivan","Amber","George"]}]},
+      {id:"D", title:"Done by person (tick sheet)", kind:"ticks", items:["Casey","Ivan","Amber","George"]}]},
     {id:"ps", name:"Pre-Spray (Seal)", startFromPiles:true, groups:[
       {id:"E", title:"Pre-Spray (Seal)", kind:"pile", items:["Cue/Shaft","Shafts"]}]},
     {id:"fs", name:"Final Spray (Clear)", startFromPiles:true, groups:[
@@ -282,14 +286,19 @@ function load(){
         s.config.schedule.push({t:"16:30", label:"End of Day Count", note:"Count every pile before leaving (what the evening crew starts with)", kind:"count_eod"});
         s.config.schedule.sort((a,b)=>a.t<b.t?-1:a.t>b.t?1:0); }
       /* Dylan -> Casey (Surface Prep), numbers move with the name */
-      s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if(g.kind==="people") g.items=g.items.map(n=>n==="Dylan"?"Casey":n); }));
+      s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if(g.kind==="people"||g.kind==="ticks") g.items=g.items.map(n=>n==="Dylan"?"Casey":n); }));
       /* George added to Surface Prep */
-      s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if(g.kind==="people" && g.items.includes("Casey") && !g.items.includes("George")) g.items.push("George"); }));
+      s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if((g.kind==="people"||g.kind==="ticks") && g.items.includes("Casey") && !g.items.includes("George")) g.items.push("George"); }));
       /* On hand at each person's station: counted with the piles, one box per person */
-      s.config.depts.forEach(dp=>{ const ppl=(dp.groups||[]).find(g=>g.kind==="people"); if(!ppl) return;
+      s.config.depts.forEach(dp=>{ const ppl=(dp.groups||[]).find(g=>g.kind==="people"||g.kind==="ticks"); if(!ppl) return;
         let oh=dp.groups.find(g=>g.id===ppl.id+"h");
         if(!oh){ oh={id:ppl.id+"h", title:"On hand", kind:"pile", items:[]}; dp.groups.splice(dp.groups.indexOf(ppl),0,oh); }
         ppl.items.forEach(n=>{ if(!oh.items.includes(n)) oh.items.push(n); }); });
+      /* v1.12: each person's done comes from the tick sheet; move rounds take one Surface Prep number */
+      s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if(g.kind==="people"){ g.kind="ticks"; g.title="Done by person (tick sheet)"; } }));
+      Object.values(s.days||{}).forEach(d=>{ Object.values(d.moves||{}).forEach(r=>{ const v=r.v||{};
+        const ks=Object.keys(v).filter(k=>/^D\|/.test(k)&&v[k]!=null&&v[k]!=="");
+        if(ks.length && (v.sp==null||v.sp==="")) v.sp=ks.reduce((a,k)=>a+(+v[k]),0); }); });
       Object.values(s.days||{}).forEach(d=>{
         Object.values(d.depts||{}).forEach(x=>{ ["items","itemsAuto"].forEach(f=>{ if(x[f] && ("D|Dylan" in x[f])){ if(!("D|Casey" in x[f])) x[f]["D|Casey"]=x[f]["D|Dylan"]; delete x[f]["D|Dylan"]; } }); });
         Object.values(d.moves||{}).forEach(r=>{ if(r.v && ("D|Dylan" in r.v)){ if(!("D|Casey" in r.v)) r.v["D|Casey"]=r.v["D|Dylan"]; delete r.v["D|Dylan"]; } });
@@ -377,6 +386,19 @@ function pmTotal(def,s,mode){mode=mode||"pm"; const d=day(s,false); if(!d||!d[mo
 
 function pilesOf(def){return (def.groups||[]).filter(g=>g.kind==="pile")}
 function peopleOf(def){return (def.groups||[]).find(g=>g.kind==="people")}
+function tickGroup(def){return (def.groups||[]).find(g=>g.kind==="ticks")}
+function ohGroup(def){const g=tickGroup(def); return g?pilesOf(def).find(x=>x.id===g.id+"h"):null}
+function tickVal(s,def,m,n){const d=day(s,false); const t=d&&d.ticks&&d.ticks[m]&&d.ticks[m][def.id]; return t?t[n]:null}
+function tickSet(s,def,m,n,v){const d=day(s,true); d.ticks=d.ticks||{}; d.ticks[m]=d.ticks[m]||{}; d.ticks[m][def.id]=d.ticks[m][def.id]||{}; d.ticks[m][def.id][n]=v;}
+function personDone(s,def,n){const vals=["am","pm","eod"].map(m=>tickVal(s,def,m,n)).filter(has); if(vals.length) return sum(vals);
+  const d=day(s,false); if(d&&d.ticks&&["am","pm","eod"].some(m=>d.ticks[m]&&d.ticks[m][def.id])) return null;
+  const g=tickGroup(def), dd=deptData(s,def.id,false); const v=dd&&g?dd.items[itemKey(g.id,n)]:null; return has(v)?+v:null;}
+function ohVal(s,def,m,n){const g=ohGroup(def); if(!g) return null; const k=itemKey(g.id,n);
+  if(m==="am"){const dd=deptData(s,def.id,false); return dd?dd.items[k]:null}
+  const d=day(s,false); return d&&d[m]&&d[m][def.id]?d[m][def.id][k]:null}
+function ohSet(s,def,m,n,v){const g=ohGroup(def); if(!g) return; const k=itemKey(g.id,n);
+  if(m==="am"){deptData(s,def.id,true).items[k]=v; return}
+  const d=day(s,true); d[m]=d[m]||{}; d[m][def.id]=d[m][def.id]||{}; d[m][def.id][k]=v;}
 
 function startOf(def, dd){
   if(!dd) return null;
@@ -529,9 +551,9 @@ function card(def, dd, i){
   let sub="";
   (def.groups||[]).forEach(g=>{ const isOH=g.title==="On hand";
     g.items.forEach(n=>{const v=dd?dd.items[itemKey(g.id,n)]:null;
-      if(g.kind==="people") sub+=`<span class="chip">${esc(n)} done <b>${has(v)?v:"–"}</b></span>`;
+      if(g.kind==="ticks"){ const pd=personDone(curDate,def,n); sub+=`<span class="chip">${esc(n)} done <b>${has(pd)?pd:"–"}</b></span>`; }
       else if(has(v)) sub+=`<span class="chip ${g.kind==='pile'?'pile':''}">${g.short?esc(g.short)+" ":""}${esc(n)}${isOH?" on hand":""} <b>${v}</b></span>`;});
-    if(g.kind==="people"||isOH) sub+=`<br>`; });
+    if(g.kind==="ticks"||isOH) sub+=`<br>`; });
   const inn = dd?inOf(dd):0;
   return `<button class="card" onclick="openDept(${i})">
     <div class="top"><div><span class="n">${i+1}</span><span class="name">${esc(def.name)}</span></div>${pill}</div>
@@ -548,9 +570,9 @@ function card(def, dd, i){
 }
 
 /* ===================== Entry sheet ===================== */
-let cur=null, field=null, buf="";
+let cur=null, field=null, buf="", person=null;
 function openDept(i){
-  cur=i; buf="";
+  cur=i; buf=""; person=null;
   const def=cfg().depts[i];
   const dd=deptData(curDate,def.id,true);
   // carry-over: prefill Start from yesterday's Left Over if empty
@@ -558,55 +580,66 @@ function openDept(i){
   field = fieldOrder()[0];
   drawSheet(); document.getElementById("scrim").classList.add("on");
 }
-function closeSheet(){document.getElementById("scrim").classList.remove("on"); cleanupDay(curDate); render()}
+function closeSheet(){person=null; document.getElementById("scrim").classList.remove("on"); cleanupDay(curDate); render()}
 function getVal(k){const dd=deptData(curDate,cfg().depts[cur].id,true);
+  if(/^(tk|oh):/.test(k)){const [t,m,n]=k.split(":"); const def=cfg().depts[cur]; return t==="tk"?tickVal(curDate,def,m,n):ohVal(curDate,def,m,n);}
   if(k.startsWith("added")) return dd.added[+k.slice(5)];
   if(k.includes("|")) return dd.items[k];
   return dd[k];}
 function setVal(k,v){const dd=deptData(curDate,cfg().depts[cur].id,true);
+  if(/^(tk|oh):/.test(k)){const [t,m,n]=k.split(":"); const def=cfg().depts[cur]; if(t==="tk") tickSet(curDate,def,m,n,v); else ohSet(curDate,def,m,n,v); save(); return;}
   if(k.startsWith("added")) dd.added[+k.slice(5)]=v;
   else if(k.includes("|")) dd.items[k]=v;
   else dd[k]=v; save();}
 function fld(k,label,cls=""){
   const v=getVal(k); const shown=(field===k&&buf!=="")?buf:f(v);
   return `<button class="field ${cls} ${field===k?'sel':''}" onclick="pick('${esc(k)}')"><span>${esc(label)}</span><b>${shown}</b></button>`}
-/* each person by move round, and on hand at each count */
-function peopleTables(def,ppl,dd){
-  const d=day(curDate,false), mr=moveRounds(), oh=pilesOf(def).find(g=>g.id===ppl.id+"h");
-  const short=l=>l==="Sweep"?"Sweep":l.replace("Move round ","Round ");
-  const tmr=hm2=>hm2.replace(/ (AM|PM)$/,"");
-  let t=`<div class="sec">Done by round</div><div class="tablebox ptab"><table><tr><th></th>${mr.map(it=>`<th>${tmr(hm(it.t))}<small>${short(it.label)}</small></th>`).join("")}<th>Total</th></tr>`;
-  ppl.items.forEach(n=>{ const k=itemKey(ppl.id,n);
-    const cells=mr.map(it=>{ const r=d&&d.moves&&d.moves[it.label]; const v=r?r.v[k]:null; return `<td>${has(v)?v:"–"}</td>`; }).join("");
-    t+=`<tr><td>${esc(n)}</td>${cells}<td><b>${f(dd.items[k])}</b></td></tr>`; });
-  t+=`</table></div>`;
-  if(oh){
-    t+=`<div class="sec">On hand at each count</div><div class="tablebox ptab"><table><tr><th></th>${["am","pm","eod"].map(m=>`<th>${COUNTS[m].at}</th>`).join("")}</tr>`;
-    oh.items.forEach(n=>{ t+=`<tr><td>${esc(n)}</td>${["am","pm","eod"].map(m=>{const v=snapVal2(m,def,itemKey(oh.id,n)); return `<td>${has(v)?v:"–"}</td>`}).join("")}</tr>`; });
-    t+=`</table></div>`;
-  }
-  return t;
-}
 function calc(label,v){return `<div class="field calc"><span>${esc(label)}</span><b>${f(v)}</b></div>`}
 function pick(k){field=k;buf="";drawSheet()}
+function openPerson(n){person=n; buf=""; field=fieldOrder()[0]; drawSheet(); const sh=document.getElementById("sheet"); if(sh) sh.scrollTop=0;}
+function closePerson(){person=null; buf=""; field=fieldOrder()[0]; drawSheet();}
+function keypad(doneLabel,doneFn){return `<div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="key('${n}')">${n}</button>`).join("")}<button onclick="key('C')">Clear</button><button onclick="key('0')">0</button><button onclick="key('B')">⌫</button></div>
+  <div class="row"><button class="btn grey" onclick="nextField()">Next box ›</button><button class="btn blue" onclick="${doneFn}">${doneLabel}</button></div>`}
+function drawPerson(def){
+  const n=person, ms=["am","pm","eod"], lab={am:"Start of shift → 8:00",pm:"8:00 → 1:00",eod:"1:00 → 4:30"};
+  let h=`<div class="shead"><h2>${esc(n)} <span style="color:var(--mute);font-weight:400;font-size:15px">· ${esc(def.name)}</span></h2><button class="btn grey" onclick="closePerson()">‹ Back</button></div>
+  <div class="hint">${dayName(curDate)} ${niceDate(curDate)} · at each count, type the number from ${esc(n)}'s tick sheet (that row only) and how many are sitting at the station.</div>`;
+  let cum=0;
+  ms.forEach(m=>{ const tv=tickVal(curDate,def,m,n); if(has(tv)) cum+=+tv;
+    h+=`<div class="sec">${COUNTS[m].at} count <span style="text-transform:none;font-weight:400">· ${lab[m]}${has(tv)?` · ${cum} done so far`:""}</span></div><div class="fields two">${fld("tk:"+m+":"+n,"Done (tick sheet row)")}${fld("oh:"+m+":"+n,"On hand at station","pile")}</div>`; });
+  const tot=personDone(curDate,def,n);
+  h+=`<div class="sec">Today</div><div class="fields two">${calc("Total done today",tot)}${calc("On hand now",(()=>{for(const m of ["eod","pm","am"]){const v=ohVal(curDate,def,m,n); if(has(v)) return v;} return null})())}</div>`;
+  h+=keypad("‹ Back to "+esc(def.name),"closePerson()");
+  document.getElementById("sheet").innerHTML=h;
+}
+function tickTable(def,g){
+  const ms=["am","pm","eod"];
+  let t=`<div class="sec">${esc(g.title)} · tap a name</div><div class="tablebox ptab"><table><tr><th></th>${ms.map(m=>`<th>${COUNTS[m].at}<small>done</small></th>`).join("")}<th>Total</th><th>On hand<small>latest</small></th></tr>`;
+  g.items.forEach(n=>{ const tv=ms.map(m=>tickVal(curDate,def,m,n)); const tot=personDone(curDate,def,n);
+    let on=null; for(const m of ["eod","pm","am"]){const v=ohVal(curDate,def,m,n); if(has(v)){on=v;break}}
+    t+=`<tr class="tap" onclick="openPerson('${esc(n)}')"><td>${esc(n)} ›</td>${tv.map(v=>`<td>${has(v)?v:"–"}</td>`).join("")}<td><b>${f(tot)}</b></td><td>${f(on)}</td></tr>`; });
+  return t+`</table></div>`;
+}
 function drawSheet(){
   const def=cfg().depts[cur], dd=deptData(curDate,def.id,true);
+  if(person) return drawPerson(def);
   let h=`<div class="shead"><h2>${cur+1}. ${esc(def.name)}</h2><button class="btn grey" onclick="closeSheet()">‹ Back</button></div><div class="hint">${dayName(curDate)} ${niceDate(curDate)} · tap a box, then type the number. Saves as you type.</div>`;
-  pilesOf(def).forEach(g=>{h+=`<div class="sec">${esc(g.title)} · tickets sitting</div><div class="fields">`+g.items.map(n=>fld(itemKey(g.id,n),n,"pile")).join("")+`</div>`});
-  const ppl=peopleOf(def);
-  if(ppl){h+=`<div class="sec">${esc(ppl.title)}</div><div class="fields">`+ppl.items.map(n=>fld(itemKey(ppl.id,n),n)).join("")+`</div>`+peopleTables(def,ppl,dd)}
+  pilesOf(def).filter(g=>g.title!=="On hand").forEach(g=>{h+=`<div class="sec">${esc(g.title)} · tickets sitting</div><div class="fields">`+g.items.map(n=>fld(itemKey(g.id,n),n,"pile")).join("")+`</div>`});
+  const ppl=peopleOf(def), tg=tickGroup(def);
+  if(ppl){h+=`<div class="sec">${esc(ppl.title)}</div><div class="fields">`+ppl.items.map(n=>fld(itemKey(ppl.id,n),n)).join("")+`</div>`}
+  if(tg) h+=tickTable(def,tg);
   h+=`<div class="sec">Today</div><div class="fields">
     ${def.startFromPiles?calc("Start of Day (piles)",startOf(def,dd)):fld("start","Start of Day")}
     ${has(dd.receivedAuto)&&!has(dd.received)?calc("Received (from moves)",dd.receivedAuto):fld("received","Received")}${fld("added0","Added")}${fld("added1","Added")}${fld("added2","Added")}
     ${ppl?calc("Completed (people)",completedOf(def,dd)):has(dd.movedAuto)?calc("Completed (from moves)",dd.movedAuto):fld("completed","Completed")}
     ${calc("Total to Work",totalOf(def,dd))}${calc("Left Over",leftOf(def,dd))}</div>`;
-  h+=`<div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="key('${n}')">${n}</button>`).join("")}<button onclick="key('C')">Clear</button><button onclick="key('0')">0</button><button onclick="key('B')">⌫</button></div>
-  <div class="row"><button class="btn grey" onclick="nextField()">Next box ›</button><button class="btn blue" onclick="closeSheet()">Done</button></div>`;
+  h+=keypad("Done","closeSheet()");
   document.getElementById("sheet").innerHTML=h;
 }
 function fieldOrder(){
   const def=cfg().depts[cur], o=[];
-  pilesOf(def).forEach(g=>g.items.forEach(n=>o.push(itemKey(g.id,n))));
+  if(person) return ["am","pm","eod"].flatMap(m=>["tk:"+m+":"+person,"oh:"+m+":"+person]);
+  pilesOf(def).filter(g=>g.title!=="On hand").forEach(g=>g.items.forEach(n=>o.push(itemKey(g.id,n))));
   const ppl=peopleOf(def); if(ppl) ppl.items.forEach(n=>o.push(itemKey(ppl.id,n)));
   if(!def.startFromPiles) o.push("start");
   o.push("received","added0","added1","added2"); if(!ppl) o.push("completed");
@@ -761,10 +794,10 @@ function viewWeek(){
     h+=`<tr><td>${esc(def.name)}</td>${vals.map(v=>v==null?`<td class="e">–</td>`:`<td class="${v>=T?'g':'r'}">${v}</td>`).join("")}<td><b>${any?t:"–"}</b></td><td class="${any?(t>=W?'g':''):'e'}">${any?Math.round(t/W*100)+"%":"–"}</td></tr>`});
   h+=`</table></div>`;
   // people
-  const people=[]; cfg().depts.forEach(def=>{const p=peopleOf(def); if(p) p.items.forEach(n=>people.push({def,g:p,n}))});
+  const people=[]; cfg().depts.forEach(def=>{const p=peopleOf(def)||tickGroup(def); if(p) p.items.forEach(n=>people.push({def,g:p,n}))});
   if(people.length){
     h+=`<div class="sec">People this week (completed)</div><div class="tablebox"><table><tr><th>Person</th>${cols.map(s=>`<th>${shortDay(s)}</th>`).join("")}<th>Week</th></tr>`;
-    people.forEach(p=>{const vals=cols.map(s=>{const dd=deptData(s,p.def.id,false);return dd?dd.items[itemKey(p.g.id,p.n)]:null});const any=vals.some(has);
+    people.forEach(p=>{const vals=cols.map(s=>p.g.kind==="ticks"?personDone(s,p.def,p.n):(()=>{const dd=deptData(s,p.def.id,false);return dd?dd.items[itemKey(p.g.id,p.n)]:null})());const any=vals.some(has);
       h+=`<tr><td>${esc(p.n)} <span style="color:var(--mute);font-size:12px">${esc(p.def.name)}</span></td>${vals.map(v=>has(v)?`<td>${v}</td>`:`<td class="e">–</td>`).join("")}<td><b>${any?sum(vals):"–"}</b></td></tr>`});
     h+=`</table></div>`;
   }
@@ -858,6 +891,8 @@ function exportCSV(){
       cfg().depts.forEach(def=>{const v=movedIn(s,it.label,def); if(v==null) return;
         const p=peopleOf(def); const det=p?p.items.filter(n=>has(r.v[itemKey(p.id,n)])).map(n=>n+"="+r.v[itemKey(p.id,n)]).join("; "):"";
         rows.push([s,dayName(s),"MOVED "+it.label+" ("+hm(it.t)+") – "+def.name,"","","","","","",v,"",det]);});});
+    cfg().depts.forEach(def=>{const g=tickGroup(def); if(!g) return; g.items.forEach(n=>{const tv=["am","pm","eod"].map(m=>tickVal(s,def,m,n)); if(!tv.some(has)) return;
+      rows.push([s,dayName(s),"TICK SHEET – "+def.name+" – "+n,"","","","","","",personDone(s,def,n),"",["8:00","1:00","4:30"].map((a,i)=>a+"="+(has(tv[i])?tv[i]:"")).join("; ")]);});});
     cfg().schedule.forEach((it,i)=>{const v=schedDone(s,i); if(v) rows.push([s,dayName(s),"SCHEDULE","","","","","","","","",it.label+" ("+hm(it.t)+") done "+clock(v)]);});
     if(store.days[s].countStarted) rows.push([s,dayName(s),"MORNING COUNT","","","","","","","","",countTimes(s,"am")]);
     ["pm","eod"].forEach(m=>{ if(store.days[s][m]){ cfg().depts.forEach(def=>{const p=pmTotal(def,s,m); const x=store.days[s][m][def.id]; if(p==null&&!x) return;
@@ -1034,26 +1069,21 @@ function buildReport(){
   else add("piles","info","No counts entered yet today.");
 
 
-  /* ---- people: on hand at each count, and finished by that count ---- */
-  const cntKind={am:"count",pm:"count_pm",eod:"count_eod"};
+  /* ---- people: tick sheet done and on hand at each count ---- */
   const watchPeople=[];
-  depts.forEach(def=>{ const g=peopleOf(def); if(!g) return; const oh=pilesOf(def).find(x=>x.id===g.id+"h");
-    const finBy=(n,m)=>{ const ci=cfg().schedule.find(it=>it.kind===cntKind[m]); if(!ci) return null;
-      const rs=mr.filter(it=>it.t<ci.t && d.moves && d.moves[it.label]); if(!rs.length) return null;
-      const vals=rs.map(it=>d.moves[it.label].v[itemKey(g.id,n)]).filter(has); return vals.length?sum(vals):0; };
+  depts.forEach(def=>{ const g=tickGroup(def); if(!g) return;
     const readyKey=pilesOf(def).flatMap(x=>x.items.filter(n=>/Ready/.test(n)).map(n=>itemKey(x.id,n)))[0];
     g.items.forEach(n=>{
-      const parts=[]; let lastOn=null, lastM=null;
-      ["am","pm","eod"].forEach(m=>{ if(!countUsed(m)) return; const on=oh?snapVal2(m,def,itemKey(oh.id,n)):null; const fb=m==="am"?null:finBy(n,m);
-        if(!has(on)&&fb==null) return;
-        parts.push(`${COUNTS[m].at}: ${has(on)?on+" on hand":"on hand not counted"}${fb!=null?`, ${fb} finished by then`:""}`);
-        if(has(on)){ lastOn=+on; lastM=m; } });
-      const dd=deptData(curDate,def.id,false), tot=dd?dd.items[itemKey(g.id,n)]:null;
-      if(has(tot)) parts.push(`${tot} finished today so far`);
+      const parts=[]; let cum=0, any=false, last=null;
+      ["am","pm","eod"].forEach(m=>{ const tv=tickVal(curDate,def,m,n), on=ohVal(curDate,def,m,n);
+        if(!has(tv)&&!has(on)) return;
+        if(has(tv)){ cum+=+tv; any=true; }
+        parts.push(`${COUNTS[m].at}: ${has(tv)?`${cum} done${m!=="am"?` (+${tv})`:""}`:"done not entered"}${has(on)?`, ${on} on hand`:""}`);
+        last={m,tv,on}; });
       if(!parts.length) return;
-      let lvl=has(tot)&&+tot>0?"good":"info", extra="";
-      if(anyMoved && lastOn!=null && lastOn>=5 && !(+tot>0)){ lvl="warn"; extra=` · has ${lastOn} at the station but nothing recorded finished`; watchPeople.push(n); }
-      else if(lastOn===0 && readyKey){ const rd=snapVal2(lastM,def,readyKey); if(has(rd)&&+rd>0){ lvl="warn"; extra=` · had nothing at the station while ${rd} waited in Ready`; } }
+      let lvl=cum>0?"good":"info", extra="";
+      if(last && has(last.on) && +last.on>=5 && has(last.tv) && +last.tv===0){ lvl="warn"; extra=` · ${last.on} at the station but none done since the last count`; watchPeople.push(n); }
+      else if(last && has(last.on) && +last.on===0 && readyKey){ const rd=snapVal2(last.m,def,readyKey); if(has(rd)&&+rd>0){ lvl="warn"; extra=` · nothing at the station while ${rd} waited in Ready`; } }
       add("people",lvl,`${n}: ${parts.join(" · ")}${extra}.`);
     });
   });
@@ -1088,7 +1118,7 @@ function buildReport(){
   if(worstFlat) add("bottom","warn",`Also watch ${worstFlat.def.name}: about ${worstFlat.c.t2} sitting with almost no change.`);
   if(anyMoved){ const rows=depts.map(def=>({def,c:completedOf(def,deptData(curDate,def.id,false))})).filter(r=>r.c!=null&&r.c<(md?exp:T)).sort((a,b)=>a.c-b.c);
     if(rows.length && !worstGrow) add("bottom","bad",`Furthest behind: ${rows[0].def.name} with ${rows[0].c} done.`); }
-  if(watchPeople.length) add("bottom","warn",`Check on ${watchPeople.join(", ")}: work at the station but nothing recorded finished.`);
+  if(watchPeople.length) add("bottom","warn",`Check on ${watchPeople.join(", ")}: work at the station but none done since the last count.`);
   if(R.quality.some(x=>x.lvl==="warn")) add("bottom","warn","Some counts have blank or doubtful boxes (see below). Fix those and the picture gets sharper.");
   if(!R.bottom.length) add("bottom","good","No problems found. Everything is on pace and the counts look clean.");
   return R;
@@ -1098,7 +1128,7 @@ function viewReport(){
   const sec=(title,list)=>list.length?`<div class="rsec"><h3>${title}</h3>${list.map(x=>`<div class="ri ${x.lvl}"><span class="rdot">${ic[x.lvl]}</span><span>${esc(x.txt)}</span></div>`).join("")}</div>`:"";
   return `<div class="rhead"><div><h2 style="margin:0">What's going on?</h2><div class="hint" style="margin:2px 0 0">${dayName(curDate)} ${niceDate(curDate)} · as of ${new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}${syncReady()?" · tap ⬇ Download first for everyone's latest numbers":""}</div></div>
     <button class="btn grey" style="flex:none" onclick="go('today')">‹ Back to Today</button></div>
-    ${sec("Bottom line",R.bottom)}${sec("Finished work (move rounds)",R.moves)}${sec("Surface Prep people (on hand / finished)",R.people)}${sec("Piles (counts)",R.piles)}${sec("Count check",R.quality)}${sec("Schedule",R.sched)}`;
+    ${sec("Bottom line",R.bottom)}${sec("Finished work (move rounds)",R.moves)}${sec("Surface Prep people (tick sheet / on hand)",R.people)}${sec("Piles (counts)",R.piles)}${sec("Count check",R.quality)}${sec("Schedule",R.sched)}`;
 }
 
 /* ===================== Render ===================== */
