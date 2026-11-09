@@ -184,6 +184,10 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 .shead{position:sticky;top:-18px;z-index:2;background:var(--panel);margin:-18px -18px 4px;padding:14px 18px 8px;display:flex;align-items:center;justify-content:space-between;gap:10px}
 .shead h2{margin:0}
 .shead .btn{flex:none;padding:10px 16px}
+.ptab{margin-bottom:6px}
+.ptab th,.ptab td{text-align:center;padding:7px 8px;font-size:14px}
+.ptab th small{display:block;font-weight:400;color:var(--mute);font-size:10px}
+.ptab td:first-child,.ptab th:first-child{text-align:left;font-weight:700}
 </style>
 </head>
 <body>
@@ -213,7 +217,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.10.4";
+const APP_VERSION = "1.11";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -566,6 +570,23 @@ function setVal(k,v){const dd=deptData(curDate,cfg().depts[cur].id,true);
 function fld(k,label,cls=""){
   const v=getVal(k); const shown=(field===k&&buf!=="")?buf:f(v);
   return `<button class="field ${cls} ${field===k?'sel':''}" onclick="pick('${esc(k)}')"><span>${esc(label)}</span><b>${shown}</b></button>`}
+/* each person by move round, and on hand at each count */
+function peopleTables(def,ppl,dd){
+  const d=day(curDate,false), mr=moveRounds(), oh=pilesOf(def).find(g=>g.id===ppl.id+"h");
+  const short=l=>l==="Sweep"?"Sweep":l.replace("Move round ","Round ");
+  const tmr=hm2=>hm2.replace(/ (AM|PM)$/,"");
+  let t=`<div class="sec">Done by round</div><div class="tablebox ptab"><table><tr><th></th>${mr.map(it=>`<th>${tmr(hm(it.t))}<small>${short(it.label)}</small></th>`).join("")}<th>Total</th></tr>`;
+  ppl.items.forEach(n=>{ const k=itemKey(ppl.id,n);
+    const cells=mr.map(it=>{ const r=d&&d.moves&&d.moves[it.label]; const v=r?r.v[k]:null; return `<td>${has(v)?v:"–"}</td>`; }).join("");
+    t+=`<tr><td>${esc(n)}</td>${cells}<td><b>${f(dd.items[k])}</b></td></tr>`; });
+  t+=`</table></div>`;
+  if(oh){
+    t+=`<div class="sec">On hand at each count</div><div class="tablebox ptab"><table><tr><th></th>${["am","pm","eod"].map(m=>`<th>${COUNTS[m].at}</th>`).join("")}</tr>`;
+    oh.items.forEach(n=>{ t+=`<tr><td>${esc(n)}</td>${["am","pm","eod"].map(m=>{const v=snapVal2(m,def,itemKey(oh.id,n)); return `<td>${has(v)?v:"–"}</td>`}).join("")}</tr>`; });
+    t+=`</table></div>`;
+  }
+  return t;
+}
 function calc(label,v){return `<div class="field calc"><span>${esc(label)}</span><b>${f(v)}</b></div>`}
 function pick(k){field=k;buf="";drawSheet()}
 function drawSheet(){
@@ -573,7 +594,7 @@ function drawSheet(){
   let h=`<div class="shead"><h2>${cur+1}. ${esc(def.name)}</h2><button class="btn grey" onclick="closeSheet()">‹ Back</button></div><div class="hint">${dayName(curDate)} ${niceDate(curDate)} · tap a box, then type the number. Saves as you type.</div>`;
   pilesOf(def).forEach(g=>{h+=`<div class="sec">${esc(g.title)} · tickets sitting</div><div class="fields">`+g.items.map(n=>fld(itemKey(g.id,n),n,"pile")).join("")+`</div>`});
   const ppl=peopleOf(def);
-  if(ppl){h+=`<div class="sec">${esc(ppl.title)}</div><div class="fields">`+ppl.items.map(n=>fld(itemKey(ppl.id,n),n)).join("")+`</div>`}
+  if(ppl){h+=`<div class="sec">${esc(ppl.title)}</div><div class="fields">`+ppl.items.map(n=>fld(itemKey(ppl.id,n),n)).join("")+`</div>`+peopleTables(def,ppl,dd)}
   h+=`<div class="sec">Today</div><div class="fields">
     ${def.startFromPiles?calc("Start of Day (piles)",startOf(def,dd)):fld("start","Start of Day")}
     ${has(dd.receivedAuto)&&!has(dd.received)?calc("Received (from moves)",dd.receivedAuto):fld("received","Received")}${fld("added0","Added")}${fld("added1","Added")}${fld("added2","Added")}
