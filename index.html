@@ -210,7 +210,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.9.1";
+const APP_VERSION = "1.10";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -237,6 +237,7 @@ const DEFAULT_CONFIG = {
       {id:"C", title:"Shafts Assembled", kind:"pile", items:["Marlone","Creed"]}]},
     {id:"sp", name:"Surface Prep", startFromPiles:true, groups:[
       {id:"Dp", title:"Piles", kind:"pile", items:["Pre Surface Prep","Surface Prep Ready"]},
+      {id:"Dh", title:"On hand", kind:"pile", items:["Casey","Ivan","Amber","George"]},
       {id:"D", title:"Done by person", kind:"people", items:["Casey","Ivan","Amber","George"]}]},
     {id:"ps", name:"Pre-Spray (Seal)", startFromPiles:true, groups:[
       {id:"E", title:"Pre-Spray (Seal)", kind:"pile", items:["Cue/Shaft","Shafts"]}]},
@@ -277,6 +278,11 @@ function load(){
       s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if(g.kind==="people") g.items=g.items.map(n=>n==="Dylan"?"Casey":n); }));
       /* George added to Surface Prep */
       s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if(g.kind==="people" && g.items.includes("Casey") && !g.items.includes("George")) g.items.push("George"); }));
+      /* On hand at each person's station: counted with the piles, one box per person */
+      s.config.depts.forEach(dp=>{ const ppl=(dp.groups||[]).find(g=>g.kind==="people"); if(!ppl) return;
+        let oh=dp.groups.find(g=>g.id===ppl.id+"h");
+        if(!oh){ oh={id:ppl.id+"h", title:"On hand", kind:"pile", items:[]}; dp.groups.splice(dp.groups.indexOf(ppl),0,oh); }
+        ppl.items.forEach(n=>{ if(!oh.items.includes(n)) oh.items.push(n); }); });
       Object.values(s.days||{}).forEach(d=>{
         Object.values(d.depts||{}).forEach(x=>{ ["items","itemsAuto"].forEach(f=>{ if(x[f] && ("D|Dylan" in x[f])){ if(!("D|Casey" in x[f])) x[f]["D|Casey"]=x[f]["D|Dylan"]; delete x[f]["D|Dylan"]; } }); });
         Object.values(d.moves||{}).forEach(r=>{ if(r.v && ("D|Dylan" in r.v)){ if(!("D|Casey" in r.v)) r.v["D|Casey"]=r.v["D|Dylan"]; delete r.v["D|Dylan"]; } });
@@ -951,7 +957,7 @@ function snapVal2(mode,def,k){
 }
 function stepKeys(def){ return countSteps().filter(st=>st.def.id===def.id).map(st=>({k:st.k,label:st.label})); }
 function countUsed(mode){ return cfg().depts.some(def=>stepKeys(def).some(x=>has(snapVal2(mode,def,x.k)))); }
-function prettyItem(def,label){ return label.replace(/^Dry Room · /,"").replace(/^[^:]+: /,"")+(/^Dry Room · (Seal|Clear)/.test(label)?" ("+label.match(/^Dry Room · (Seal|Clear)/)[1]+")":""); }
+function prettyItem(def,label){ if(/^On hand: /.test(label)) return label.slice(9)+" on hand"; return label.replace(/^Dry Room · /,"").replace(/^[^:]+: /,"")+(/^Dry Room · (Seal|Clear)/.test(label)?" ("+label.match(/^Dry Room · (Seal|Clear)/)[1]+")":""); }
 function compareCounts(def,m1,m2){
   const keys=stepKeys(def); let t1=0,t2=0,shared=0; const miss=[];
   keys.forEach(x=>{ const a=snapVal2(m1,def,x.k), b=snapVal2(m2,def,x.k);
@@ -960,7 +966,7 @@ function compareCounts(def,m1,m2){
 }
 function buildReport(){
   const T=cfg().targetDay, d=day(curDate,false), depts=cfg().depts, mr=moveRounds();
-  const R={bottom:[], moves:[], piles:[], quality:[], sched:[]};
+  const R={bottom:[], moves:[], people:[], piles:[], quality:[], sched:[]};
   const add=(sec,lvl,txt)=>R[sec].push({lvl,txt});   // lvl: bad / warn / good / info
   if(!d){ add("bottom","info",`Nothing has been entered for ${dayName(curDate)} yet. Start with the Morning Count, and tap Download if another device has the numbers.`); return R; }
   const isToday=curDate===todayStr(), md=midDay(), exp=paceExp();
@@ -979,9 +985,6 @@ function buildReport(){
     if(hit.length) add("moves","good",`Hit ${T}: ${hit.map(r=>`${r.def.name} (${r.c})`).join(", ")}.`);
     if(pace.length) add("moves","good",`On pace (${exp} by now): ${pace.map(r=>`${r.def.name} (${r.c})`).join(", ")}.`);
     if(behind.length) add("moves","bad",`${md?"Behind pace":"Short of "+T}: ${behind.map(r=>`${r.def.name} ${r.c}${md?` (needs ${exp})`:` (short ${T-r.c})`}`).join(", ")}.`);
-    const p=depts.find(df=>peopleOf(df)); if(p){ const g=peopleOf(p), dd=deptData(curDate,p.id,false);
-      if(dd){ const vals=g.items.map(n=>({n,v:dd.items[itemKey(g.id,n)]})).filter(x=>has(x.v));
-        if(vals.length) add("moves","info",`${p.name} by person: ${vals.map(x=>`${x.n} ${x.v}`).join(", ")}.`); } }
   }
 
   /* ---- piles: compare the first count with the latest one ---- */
@@ -1002,9 +1005,35 @@ function buildReport(){
   } else if(used.length===1) add("piles","info",`Only the ${COUNTS[used[0]].at} count is in so far. After the next count this will show which piles are growing or shrinking.`);
   else add("piles","info","No counts entered yet today.");
 
+
+  /* ---- people: on hand at each count, and finished by that count ---- */
+  const cntKind={am:"count",pm:"count_pm",eod:"count_eod"};
+  const watchPeople=[];
+  depts.forEach(def=>{ const g=peopleOf(def); if(!g) return; const oh=pilesOf(def).find(x=>x.id===g.id+"h");
+    const finBy=(n,m)=>{ const ci=cfg().schedule.find(it=>it.kind===cntKind[m]); if(!ci) return null;
+      const rs=mr.filter(it=>it.t<ci.t && d.moves && d.moves[it.label]); if(!rs.length) return null;
+      const vals=rs.map(it=>d.moves[it.label].v[itemKey(g.id,n)]).filter(has); return vals.length?sum(vals):0; };
+    const readyKey=pilesOf(def).flatMap(x=>x.items.filter(n=>/Ready/.test(n)).map(n=>itemKey(x.id,n)))[0];
+    g.items.forEach(n=>{
+      const parts=[]; let lastOn=null, lastM=null;
+      ["am","pm","eod"].forEach(m=>{ if(!countUsed(m)) return; const on=oh?snapVal2(m,def,itemKey(oh.id,n)):null; const fb=m==="am"?null:finBy(n,m);
+        if(!has(on)&&fb==null) return;
+        parts.push(`${COUNTS[m].at}: ${has(on)?on+" on hand":"on hand not counted"}${fb!=null?`, ${fb} finished by then`:""}`);
+        if(has(on)){ lastOn=+on; lastM=m; } });
+      const dd=deptData(curDate,def.id,false), tot=dd?dd.items[itemKey(g.id,n)]:null;
+      if(has(tot)) parts.push(`${tot} finished today so far`);
+      if(!parts.length) return;
+      let lvl=has(tot)&&+tot>0?"good":"info", extra="";
+      if(anyMoved && lastOn!=null && lastOn>=5 && !(+tot>0)){ lvl="warn"; extra=` · has ${lastOn} at the station but nothing recorded finished`; watchPeople.push(n); }
+      else if(lastOn===0 && readyKey){ const rd=snapVal2(lastM,def,readyKey); if(has(rd)&&+rd>0){ lvl="warn"; extra=` · had nothing at the station while ${rd} waited in Ready`; } }
+      add("people",lvl,`${n}: ${parts.join(" · ")}${extra}.`);
+    });
+  });
+
   /* ---- count quality ---- */
   used.forEach(m=>{
-    const blanks=[]; depts.forEach(def=>stepKeys(def).forEach(x=>{ if(!has(snapVal2(m,def,x.k))) blanks.push(`${def.name}: ${prettyItem(def,x.label)}`); }));
+    const blanks=[]; depts.forEach(def=>{ const ohUsed=stepKeys(def).some(x=>/h\|/.test(x.k)&&/^On hand: /.test(x.label)&&has(snapVal2(m,def,x.k)));
+      stepKeys(def).forEach(x=>{ if(/^On hand: /.test(x.label)&&!ohUsed) return; if(!has(snapVal2(m,def,x.k))) blanks.push(`${def.name}: ${prettyItem(def,x.label)}`); }); });
     if(blanks.length) add("quality","warn",`${COUNTS[m].at} count left ${blanks.length} box${blanks.length>1?"es":""} blank: ${blanks.slice(0,8).join("; ")}${blanks.length>8?"; and "+(blanks.length-8)+" more":""}.`);
     // two sides of the same department with identical numbers
     depts.forEach(def=>{ const gs=pilesOf(def); if(gs.length<2) return;
@@ -1031,6 +1060,7 @@ function buildReport(){
   if(worstFlat) add("bottom","warn",`Also watch ${worstFlat.def.name}: about ${worstFlat.c.t2} sitting with almost no change.`);
   if(anyMoved){ const rows=depts.map(def=>({def,c:completedOf(def,deptData(curDate,def.id,false))})).filter(r=>r.c!=null&&r.c<(md?exp:T)).sort((a,b)=>a.c-b.c);
     if(rows.length && !worstGrow) add("bottom","bad",`Furthest behind: ${rows[0].def.name} with ${rows[0].c} done.`); }
+  if(watchPeople.length) add("bottom","warn",`Check on ${watchPeople.join(", ")}: work at the station but nothing recorded finished.`);
   if(R.quality.some(x=>x.lvl==="warn")) add("bottom","warn","Some counts have blank or doubtful boxes (see below). Fix those and the picture gets sharper.");
   if(!R.bottom.length) add("bottom","good","No problems found. Everything is on pace and the counts look clean.");
   return R;
@@ -1040,7 +1070,7 @@ function viewReport(){
   const sec=(title,list)=>list.length?`<div class="rsec"><h3>${title}</h3>${list.map(x=>`<div class="ri ${x.lvl}"><span class="rdot">${ic[x.lvl]}</span><span>${esc(x.txt)}</span></div>`).join("")}</div>`:"";
   return `<div class="rhead"><div><h2 style="margin:0">What's going on?</h2><div class="hint" style="margin:2px 0 0">${dayName(curDate)} ${niceDate(curDate)} · as of ${new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}${syncReady()?" · tap ⬇ Download first for everyone's latest numbers":""}</div></div>
     <button class="btn grey" style="flex:none" onclick="go('today')">‹ Back to Today</button></div>
-    ${sec("Bottom line",R.bottom)}${sec("Finished work (move rounds)",R.moves)}${sec("Piles (counts)",R.piles)}${sec("Count check",R.quality)}${sec("Schedule",R.sched)}`;
+    ${sec("Bottom line",R.bottom)}${sec("Finished work (move rounds)",R.moves)}${sec("Surface Prep people (on hand / finished)",R.people)}${sec("Piles (counts)",R.piles)}${sec("Count check",R.quality)}${sec("Schedule",R.sched)}`;
 }
 
 /* ===================== Render ===================== */
