@@ -170,6 +170,17 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 .syncbar button{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-weight:700;font-size:13px}
 .syncbar button:active{border-color:var(--accent)}
 .syncbar span{color:var(--mute);font-size:12px;min-width:90px}
+.reportbtn{display:block;width:100%;margin:0 0 12px;font-size:17px;padding:13px}
+.rhead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.rsec{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:12px}
+.rsec h3{margin:0 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+.ri{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--line);font-size:15px;line-height:1.4}
+.ri:first-of-type{border-top:0}
+.rdot{flex:none;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;margin-top:1px}
+.ri.bad .rdot{background:rgba(255,92,92,.18);color:var(--bad)}
+.ri.warn .rdot{background:rgba(242,176,30,.18);color:var(--warn)}
+.ri.good .rdot{background:rgba(55,196,122,.18);color:var(--good)}
+.ri.info .rdot{background:#1c2536;color:var(--accent)}
 </style>
 </head>
 <body>
@@ -199,7 +210,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.8.1";
+const APP_VERSION = "1.9";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -215,7 +226,7 @@ const DEFAULT_CONFIG = {
     {t:"14:30", label:"Move round 3", note:"Move finished work, restock Ready piles", kind:"move"},
     {t:"16:00", label:"Move round 4", note:"Move finished work, load every Ready pile for the 5–8 pm crew", kind:"move"},
     {t:"16:30", label:"End of Day Count", note:"Count every pile before leaving (what the evening crew starts with)", kind:"count_eod"},
-    {t:"16:55", label:"Close out", note:"Look over Today: who hit 40, the Watch box, Issues", kind:"close"}
+    {t:"16:55", label:"Close out", note:"Read What's going on? and look over Issues", kind:"close"}
   ],
   depts: [
     {id:"pi", name:"Production Initiated"},
@@ -455,6 +466,7 @@ function viewToday(){
   const ni=nextItem();
   if(ni!=null){const it=cfg().schedule[ni], st=schedState(curDate,ni);
     h+=`<button class="nextbar ${st}" onclick="go('schedule')"><span><b>${st==="late"?"Overdue":st==="now"?"Now":"Next"}: ${esc(it.label)}</b> at ${hm(it.t)}<small>${esc(it.note)}</small></span><span class="go">Schedule ›</span></button>`;}
+  h+=`<button class="btn blue reportbtn" onclick="go('report')">What's going on?</button>`;
   { const lines=["am","pm","eod"].map(m=>{const t=countTimes(curDate,m); return t?`${COUNTS[m].name}: <b style="color:var(--warn)">${t.replace("Count started ","started ")}</b>`:""}).filter(Boolean);
     if(lines.length) h += `<div class="note">${lines.join("<br>")}</div>`; }
   if(false){ const am="",pm="";
@@ -653,7 +665,7 @@ function tickSched(i){
   if(it.kind==="count_pm"){ go("count","pm"); return; }
   if(it.kind==="count_eod"){ go("count","eod"); return; }
   if(it.kind==="move"){ openMove(it.label); return; }
-  if(it.kind==="close"){ const d0=day(curDate,true); d0.sched=d0.sched||{}; if(!d0.sched[i]){ d0.sched[i]=Date.now(); save(); } go("today"); return; }
+  if(it.kind==="close"){ const d0=day(curDate,true); d0.sched=d0.sched||{}; if(!d0.sched[i]){ d0.sched[i]=Date.now(); save(); } go("report"); return; }
   const d=day(curDate,true); d.sched=d.sched||{};
   if(d.sched[i]){ if(!confirmTwice()) return; delete d.sched[i]; toast("Unticked"); }
   else { d.sched[i]=Date.now(); toast(it.label+" done at "+clock(d.sched[i])); }
@@ -930,11 +942,110 @@ async function saveSync(){
 }
 function forgetSync(){ if(!confirmTwice()) return; const c=syncCfg(); delete c.token; try{ localStorage.setItem(SYNC_KEY, JSON.stringify(c)); }catch(e){} toast("Key removed from this device"); render(); }
 
+/* ===================== What's going on? (floor report) ===================== */
+function snapVal2(mode,def,k){
+  if(mode==="am"){ const dd=deptData(curDate,def.id,false); if(!dd) return null; return k==="start"?dd.start:dd.items[k]; }
+  const d=day(curDate,false); return d&&d[mode]&&d[mode][def.id]?d[mode][def.id][k]:null;
+}
+function stepKeys(def){ return countSteps().filter(st=>st.def.id===def.id).map(st=>({k:st.k,label:st.label})); }
+function countUsed(mode){ return cfg().depts.some(def=>stepKeys(def).some(x=>has(snapVal2(mode,def,x.k)))); }
+function prettyItem(def,label){ return label.replace(/^Dry Room · /,"").replace(/^[^:]+: /,"")+(/^Dry Room · (Seal|Clear)/.test(label)?" ("+label.match(/^Dry Room · (Seal|Clear)/)[1]+")":""); }
+function compareCounts(def,m1,m2){
+  const keys=stepKeys(def); let t1=0,t2=0,shared=0; const miss=[];
+  keys.forEach(x=>{ const a=snapVal2(m1,def,x.k), b=snapVal2(m2,def,x.k);
+    if(has(a)&&has(b)){ t1+=+a; t2+=+b; shared++; } else if(has(a)!==has(b)) miss.push(x.label); });
+  return shared?{t1,t2,ch:t2-t1,miss,full:miss.length===0}:null;
+}
+function buildReport(){
+  const T=cfg().targetDay, d=day(curDate,false), depts=cfg().depts, mr=moveRounds();
+  const R={bottom:[], moves:[], piles:[], quality:[], sched:[]};
+  const add=(sec,lvl,txt)=>R[sec].push({lvl,txt});   // lvl: bad / warn / good / info
+  if(!d){ add("bottom","info",`Nothing has been entered for ${dayName(curDate)} yet. Start with the Morning Count, and tap Download if another device has the numbers.`); return R; }
+  const isToday=curDate===todayStr(), md=midDay(), exp=paceExp();
+
+  /* ---- finished work (move rounds) ---- */
+  const roundsDone=mr.filter(it=>d.moves&&d.moves[it.label]);
+  const zeroRounds=roundsDone.filter(it=>{ const v=d.moves[it.label].v||{}; const vals=Object.values(v).filter(has); return vals.length===0||vals.every(x=>+x===0); });
+  const anyMoved=roundsDone.some(it=>Object.values(d.moves[it.label].v||{}).some(x=>has(x)&&+x>0));
+  if(!roundsDone.length) add("moves","bad","No move rounds have been entered yet, so nothing counts as finished.");
+  if(zeroRounds.length) add("moves","bad",`${zeroRounds.map(it=>it.label.replace("Move round ","Round ")).join(", ")} ${zeroRounds.length>1?"were":"was"} saved with 0 for every department. Either nothing was moved out of the DONE spots, or the round was tapped through without counting.`);
+  if(roundsDone.length>=2){ const ts=roundsDone.map(it=>d.moves[it.label].fin).filter(Boolean).sort((a,b)=>a-b);
+    for(let i=1;i<ts.length;i++) if(ts[i]-ts[i-1]<60000){ add("moves","warn",`Two rounds were finished less than a minute apart (${clock(ts[i-1])} and ${clock(ts[i])}): a round should be a real walk of the floor.`); break; } }
+  if(anyMoved){
+    const rows=depts.map(def=>({def,c:completedOf(def,deptData(curDate,def.id,false))})).filter(r=>r.c!=null);
+    const hit=rows.filter(r=>r.c>=T), behind=rows.filter(r=>r.c<T&&(!md||r.c<exp)).sort((a,b)=>a.c-b.c), pace=rows.filter(r=>r.c<T&&md&&r.c>=exp);
+    if(hit.length) add("moves","good",`Hit ${T}: ${hit.map(r=>`${r.def.name} (${r.c})`).join(", ")}.`);
+    if(pace.length) add("moves","good",`On pace (${exp} by now): ${pace.map(r=>`${r.def.name} (${r.c})`).join(", ")}.`);
+    if(behind.length) add("moves","bad",`${md?"Behind pace":"Short of "+T}: ${behind.map(r=>`${r.def.name} ${r.c}${md?` (needs ${exp})`:` (short ${T-r.c})`}`).join(", ")}.`);
+    const p=depts.find(df=>peopleOf(df)); if(p){ const g=peopleOf(p), dd=deptData(curDate,p.id,false);
+      if(dd){ const vals=g.items.map(n=>({n,v:dd.items[itemKey(g.id,n)]})).filter(x=>has(x.v));
+        if(vals.length) add("moves","info",`${p.name} by person: ${vals.map(x=>`${x.n} ${x.v}`).join(", ")}.`); } }
+  }
+
+  /* ---- piles: compare the first count with the latest one ---- */
+  const used=["am","pm","eod"].filter(countUsed);
+  let worstGrow=null, worstFlat=null, ch={};
+  if(used.length>=2){
+    const m1=used[0], m2=used[used.length-1], l1=COUNTS[m1].at, l2=COUNTS[m2].at;
+    depts.forEach(def=>{ const c=compareCounts(def,m1,m2); if(!c) return; ch[def.id]=c;
+      const full=c.full?"":` (only boxes counted both times; ${c.miss.length} left blank)`;
+      if(c.ch>=10 || (c.t1>0 && c.ch/c.t1>=0.25 && c.ch>=5)){ add("piles","bad",`${def.name} is piling up: ${c.t1} → ${c.t2} (+${c.ch}) from ${l1} to ${l2}${full}.`); if(!worstGrow||c.ch>worstGrow.c.ch) worstGrow={def,c}; }
+      else if(c.ch<=-10){ add("piles","good",`${def.name} is working through its pile: ${c.t1} → ${c.t2} (${c.ch})${full}.`); }
+      else if(Math.abs(c.ch)<=3 && c.t2>=100){ add("piles","warn",`${def.name} has about ${c.t2} sitting and barely changed (${c.ch>=0?"+":""}${c.ch}) since ${l1}.`); if(!worstFlat||c.t2>worstFlat.c.t2) worstFlat={def,c}; }
+    });
+    // what left one department should show up at the next
+    for(let i=0;i<depts.length-1;i++){ const a=ch[depts[i].id], b=ch[depts[i+1].id];
+      if(a&&b&&a.ch<=-10){ const gone=-a.ch, came=Math.max(0,b.ch); if(gone-came>=15) add("piles","warn",`${depts[i].name} dropped ${gone} but ${depts[i+1].name} only went up ${came}: about ${gone-came} unaccounted for (finished and moved on further, or a count is off).`); } }
+    if(!R.piles.length) add("piles","info",`No big changes in the piles between ${l1} and ${l2}.`);
+  } else if(used.length===1) add("piles","info",`Only the ${COUNTS[used[0]].at} count is in so far. After the next count this will show which piles are growing or shrinking.`);
+  else add("piles","info","No counts entered yet today.");
+
+  /* ---- count quality ---- */
+  used.forEach(m=>{
+    const blanks=[]; depts.forEach(def=>stepKeys(def).forEach(x=>{ if(!has(snapVal2(m,def,x.k))) blanks.push(`${def.name}: ${prettyItem(def,x.label)}`); }));
+    if(blanks.length) add("quality","warn",`${COUNTS[m].at} count left ${blanks.length} box${blanks.length>1?"es":""} blank: ${blanks.slice(0,8).join("; ")}${blanks.length>8?"; and "+(blanks.length-8)+" more":""}.`);
+    // two sides of the same department with identical numbers
+    depts.forEach(def=>{ const gs=pilesOf(def); if(gs.length<2) return;
+      for(let i=0;i<gs.length;i++) for(let j=i+1;j<gs.length;j++){ const a=gs[i], b=gs[j]; if(a.items.join()!==b.items.join()) continue;
+        const same=a.items.filter(n=>{ const x=snapVal2(m,def,itemKey(a.id,n)), y=snapVal2(m,def,itemKey(b.id,n)); return has(x)&&has(y)&&+x===+y&&+x>0; });
+        if(same.length>=2) add("quality","warn",`${COUNTS[m].at} count: ${def.name} ${a.short||a.title} and ${b.short||b.title} have the same numbers for ${same.join(" and ")}. Double-check they weren't entered twice.`); } });
+    const a=d[COUNTS[m].a], b=d[COUNTS[m].b];
+    if(a&&b){ const mins=Math.round((b-a)/60000);
+      if(mins<10) add("quality","warn",`${COUNTS[m].name} took only ${mins} minute${mins===1?"":"s"}. That's fast for ${countSteps().length} piles; it may have been rushed.`);
+      else if(mins>45) add("quality","info",`${COUNTS[m].name} took ${mins} minutes (${clock(a)}–${clock(b)}).`);
+      if(m==="am" && isToday){ const st=fromStr(curDate); st.setHours(8,15,0,0); if(a>st.getTime()) add("quality","info",`Morning count started at ${clock(a)}, after 8:15. Some work may have already moved before it was counted.`); } }
+  });
+  if(!R.quality.length && used.length) add("quality","good","The counts look complete.");
+
+  /* ---- schedule ---- */
+  if(isToday){ const sc=cfg().schedule; const late=sc.map((it,i)=>({it,st:schedState(curDate,i)})).filter(x=>x.st==="late");
+    const done=sc.filter((_,i)=>schedDone(curDate,i)).length;
+    add("sched", late.length?"warn":"good", `${done} of ${sc.length} schedule items done.${late.length?" Overdue: "+late.map(x=>`${x.it.label} (${hm(x.it.t)})`).join(", ")+".":""}`); }
+  else { const sc=cfg().schedule; const done=sc.filter((_,i)=>schedDone(curDate,i)).length; add("sched","info",`${done} of ${sc.length} schedule items were done that day.`); }
+
+  /* ---- bottom line ---- */
+  if(!anyMoved) add("bottom","bad","You can't see who's hitting "+T+" yet: no finished work has been recorded. At each move round, enter how many tickets came out of each department's DONE spot.");
+  if(worstGrow) add("bottom","bad",`Likely bottleneck: ${worstGrow.def.name}, its pile grew by ${worstGrow.c.ch} today. More is coming in than going out.`);
+  if(worstFlat) add("bottom","warn",`Also watch ${worstFlat.def.name}: about ${worstFlat.c.t2} sitting with almost no change.`);
+  if(anyMoved){ const rows=depts.map(def=>({def,c:completedOf(def,deptData(curDate,def.id,false))})).filter(r=>r.c!=null&&r.c<(md?exp:T)).sort((a,b)=>a.c-b.c);
+    if(rows.length && !worstGrow) add("bottom","bad",`Furthest behind: ${rows[0].def.name} with ${rows[0].c} done.`); }
+  if(R.quality.some(x=>x.lvl==="warn")) add("bottom","warn","Some counts have blank or doubtful boxes (see below). Fix those and the picture gets sharper.");
+  if(!R.bottom.length) add("bottom","good","No problems found. Everything is on pace and the counts look clean.");
+  return R;
+}
+function viewReport(){
+  const R=buildReport(), ic={bad:"!",warn:"?",good:"✓",info:"i"};
+  const sec=(title,list)=>list.length?`<div class="rsec"><h3>${title}</h3>${list.map(x=>`<div class="ri ${x.lvl}"><span class="rdot">${ic[x.lvl]}</span><span>${esc(x.txt)}</span></div>`).join("")}</div>`:"";
+  return `<div class="rhead"><div><h2 style="margin:0">What's going on?</h2><div class="hint" style="margin:2px 0 0">${dayName(curDate)} ${niceDate(curDate)} · as of ${new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}${syncReady()?" · tap ⬇ Download first for everyone's latest numbers":""}</div></div>
+    <button class="btn grey" style="flex:none" onclick="go('today')">‹ Back to Today</button></div>
+    ${sec("Bottom line",R.bottom)}${sec("Finished work (move rounds)",R.moves)}${sec("Piles (counts)",R.piles)}${sec("Count check",R.quality)}${sec("Schedule",R.sched)}`;
+}
+
 /* ===================== Render ===================== */
 function render(){
   header(); tabs(); syncBar();
   const v=document.getElementById("view");
-  v.innerHTML = tab==="today"?viewToday(): tab==="schedule"?viewSchedule(): tab==="move"?viewMove(): tab==="count"?viewCount(): tab==="week"?viewWeek(): tab==="issues"?viewIssues(): viewSettings();
+  v.innerHTML = tab==="today"?viewToday(): tab==="schedule"?viewSchedule(): tab==="move"?viewMove(): tab==="report"?viewReport(): tab==="count"?viewCount(): tab==="week"?viewWeek(): tab==="issues"?viewIssues(): viewSettings();
 }
 document.getElementById("scrim").addEventListener("click",e=>{if(e.target.id==="scrim")closeSheet()});
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden && curDate!==todayStr() && tab==="today"){ /* keep user's chosen day */ } });
