@@ -190,7 +190,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.6";
+const APP_VERSION = "1.7";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -222,7 +222,9 @@ const DEFAULT_CONFIG = {
       {id:"E", title:"Pre-Spray (Seal)", kind:"pile", items:["Cue/Shaft","Shafts"]}]},
     {id:"fs", name:"Final Spray (Clear)", startFromPiles:true, groups:[
       {id:"F", title:"Final Spray (Clear)", kind:"pile", items:["Cue/Shaft","Shaft","JP","Ext"]}]},
-    {id:"dr", name:"Dry Room"},
+    {id:"dr", name:"Dry Room", startFromPiles:true, groups:[
+      {id:"DS", title:"Dry Room · Seal", short:"Seal", kind:"pile", items:["Cues","Shafts","Extensions","JPs"]},
+      {id:"DC", title:"Dry Room · Clear", short:"Clear", kind:"pile", items:["Cues","Shafts","Extensions","JPs"]}]},
     {id:"bf", name:"Buffing"},
     {id:"qc", name:"Final QC"}
   ]
@@ -239,7 +241,10 @@ function load(){
     if(raw){ const s = JSON.parse(raw); if(s && s.config && s.days){ if(!s.config.schedule) s.config.schedule=JSON.parse(JSON.stringify(DEFAULT_CONFIG.schedule));
       s.config.schedule.forEach(it=>{ if(it.label==="Quick check"){ it.label="Afternoon Count"; it.note="Count every pile again after lunch"; it.kind="count_pm"; } });
       s.config.depts.forEach(dp=>{ if(dp.id==="sp") dp.startFromPiles=true; });
-      if(!s.config.depts.some(dp=>dp.id==="dr")){ const i=s.config.depts.findIndex(dp=>dp.id==="bf"); s.config.depts.splice(i<0?s.config.depts.length:i,0,{id:"dr", name:"Dry Room"}); }
+      { const drDef=JSON.parse(JSON.stringify(DEFAULT_CONFIG.depts.find(dp=>dp.id==="dr")));
+        const di=s.config.depts.findIndex(dp=>dp.id==="dr");
+        if(di<0){ const i=s.config.depts.findIndex(dp=>dp.id==="bf"); s.config.depts.splice(i<0?s.config.depts.length:i,0,drDef); }
+        else if(!s.config.depts[di].groups){ s.config.depts[di]=drDef; } }
       s.config.schedule.forEach(it=>{ if(!it.kind && (it.label==="Sweep"||/^Move round/.test(it.label))) it.kind="move";
         if(it.label==="Close out"){ it.kind="close"; it.note="Look over Today: who hit 40, the Watch box, Issues"; } });
       if(!s.config.schedule.some(it=>it.kind==="count_eod")){
@@ -470,7 +475,7 @@ function card(def, dd, i){
   const col=c==null?"#33415c":ok?"var(--good)":"var(--bad)";
   const pill=c==null?`<span class="pill none">Not entered</span>`:c>=T?`<span class="pill good">On target</span>`:md?(c>=exp?`<span class="pill good">On pace</span>`:`<span class="pill bad">Behind ${exp-c}</span>`):`<span class="pill bad">Short ${T-c}</span>`;
   let sub="";
-  (def.groups||[]).forEach(g=>g.items.forEach(n=>{const v=dd?dd.items[itemKey(g.id,n)]:null; if(has(v)) sub+=`<span class="chip ${g.kind==='pile'?'pile':''}">${esc(n)} <b>${v}</b></span>`}));
+  (def.groups||[]).forEach(g=>g.items.forEach(n=>{const v=dd?dd.items[itemKey(g.id,n)]:null; if(has(v)) sub+=`<span class="chip ${g.kind==='pile'?'pile':''}">${g.short?esc(g.short)+" ":""}${esc(n)} <b>${v}</b></span>`}));
   const inn = dd?inOf(dd):0;
   return `<button class="card" onclick="openDept(${i})">
     <div class="top"><div><span class="n">${i+1}</span><span class="name">${esc(def.name)}</span></div>${pill}</div>
