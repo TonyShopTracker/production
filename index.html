@@ -190,7 +190,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.5.4";
+const APP_VERSION = "1.6";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -222,6 +222,7 @@ const DEFAULT_CONFIG = {
       {id:"E", title:"Pre-Spray (Seal)", kind:"pile", items:["Cue/Shaft","Shafts"]}]},
     {id:"fs", name:"Final Spray (Clear)", startFromPiles:true, groups:[
       {id:"F", title:"Final Spray (Clear)", kind:"pile", items:["Cue/Shaft","Shaft","JP","Ext"]}]},
+    {id:"dr", name:"Dry Room"},
     {id:"bf", name:"Buffing"},
     {id:"qc", name:"Final QC"}
   ]
@@ -238,6 +239,7 @@ function load(){
     if(raw){ const s = JSON.parse(raw); if(s && s.config && s.days){ if(!s.config.schedule) s.config.schedule=JSON.parse(JSON.stringify(DEFAULT_CONFIG.schedule));
       s.config.schedule.forEach(it=>{ if(it.label==="Quick check"){ it.label="Afternoon Count"; it.note="Count every pile again after lunch"; it.kind="count_pm"; } });
       s.config.depts.forEach(dp=>{ if(dp.id==="sp") dp.startFromPiles=true; });
+      if(!s.config.depts.some(dp=>dp.id==="dr")){ const i=s.config.depts.findIndex(dp=>dp.id==="bf"); s.config.depts.splice(i<0?s.config.depts.length:i,0,{id:"dr", name:"Dry Room"}); }
       s.config.schedule.forEach(it=>{ if(!it.kind && (it.label==="Sweep"||/^Move round/.test(it.label))) it.kind="move";
         if(it.label==="Close out"){ it.kind="close"; it.note="Look over Today: who hit 40, the Watch box, Issues"; } });
       if(!s.config.schedule.some(it=>it.kind==="count_eod")){
