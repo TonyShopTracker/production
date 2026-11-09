@@ -210,7 +210,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.9";
+const APP_VERSION = "1.9.1";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -237,7 +237,7 @@ const DEFAULT_CONFIG = {
       {id:"C", title:"Shafts Assembled", kind:"pile", items:["Marlone","Creed"]}]},
     {id:"sp", name:"Surface Prep", startFromPiles:true, groups:[
       {id:"Dp", title:"Piles", kind:"pile", items:["Pre Surface Prep","Surface Prep Ready"]},
-      {id:"D", title:"Done by person", kind:"people", items:["Casey","Ivan","Amber"]}]},
+      {id:"D", title:"Done by person", kind:"people", items:["Casey","Ivan","Amber","George"]}]},
     {id:"ps", name:"Pre-Spray (Seal)", startFromPiles:true, groups:[
       {id:"E", title:"Pre-Spray (Seal)", kind:"pile", items:["Cue/Shaft","Shafts"]}]},
     {id:"fs", name:"Final Spray (Clear)", startFromPiles:true, groups:[
@@ -275,6 +275,8 @@ function load(){
         s.config.schedule.sort((a,b)=>a.t<b.t?-1:a.t>b.t?1:0); }
       /* Dylan -> Casey (Surface Prep), numbers move with the name */
       s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if(g.kind==="people") g.items=g.items.map(n=>n==="Dylan"?"Casey":n); }));
+      /* George added to Surface Prep */
+      s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if(g.kind==="people" && g.items.includes("Casey") && !g.items.includes("George")) g.items.push("George"); }));
       Object.values(s.days||{}).forEach(d=>{
         Object.values(d.depts||{}).forEach(x=>{ ["items","itemsAuto"].forEach(f=>{ if(x[f] && ("D|Dylan" in x[f])){ if(!("D|Casey" in x[f])) x[f]["D|Casey"]=x[f]["D|Dylan"]; delete x[f]["D|Dylan"]; } }); });
         Object.values(d.moves||{}).forEach(r=>{ if(r.v && ("D|Dylan" in r.v)){ if(!("D|Casey" in r.v)) r.v["D|Casey"]=r.v["D|Dylan"]; delete r.v["D|Dylan"]; } });
