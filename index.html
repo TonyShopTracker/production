@@ -166,6 +166,10 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
   .kpi{padding:10px 12px}.kpi .v{font-size:22px}
 }
 @media (max-width:760px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.brand h1{font-size:17px}.datebar .d{min-width:120px}}
+.syncbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.syncbar button{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-weight:700;font-size:13px}
+.syncbar button:active{border-color:var(--accent)}
+.syncbar span{color:var(--mute);font-size:12px;min-width:90px}
 </style>
 </head>
 <body>
@@ -181,6 +185,11 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
       <button onclick="shiftDay(1)" aria-label="Next day">›</button>
       <button class="today" id="todayBtn" onclick="goToday()">Today</button>
     </div>
+    <div class="syncbar" id="syncbar" style="display:none">
+      <button onclick="syncUpload()" id="upBtn">⬆ Upload</button>
+      <button onclick="syncDownload()" id="downBtn">⬇ Download</button>
+      <span id="syncInfo"></span>
+    </div>
   </header>
   <nav id="tabs"></nav>
   <main id="view"></main>
@@ -190,7 +199,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.7";
+const APP_VERSION = "1.8";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -230,7 +239,9 @@ const DEFAULT_CONFIG = {
   ]
 };
 
+let _memo={};
 let store = load();
+memoInit();
 let curDate = todayStr();
 let tab = "today";
 let unlocked = false;
@@ -255,8 +266,16 @@ function load(){
   }catch(e){}
   return {version:APP_VERSION, config:JSON.parse(JSON.stringify(DEFAULT_CONFIG)), days:{}, lastBackup:null};
 }
+/* ----- change stamps, so syncing can tell which copy of a day is newer ----- */
+function _j(o){return JSON.stringify(o,(k,v)=>k==="_mod"?undefined:v)}
+function memoInit(){_memo={}; Object.keys(store.days).forEach(s=>_memo[s]=_j(store.days[s])); _memo.__cfg=_j(store.config);}
+function stampMods(){
+  const now=Date.now();
+  Object.keys(store.days).forEach(s=>{const j=_j(store.days[s]); if(_memo[s]!==j){store.days[s]._mod=now; _memo[s]=j;}});
+  const cj=_j(store.config); if(_memo.__cfg!==cj){store.config._mod=now; _memo.__cfg=cj;}
+}
 function save(){
-  try{ localStorage.setItem(KEY, JSON.stringify(store)); }
+  try{ stampMods(); localStorage.setItem(KEY, JSON.stringify(store)); }
   catch(e){ toast("Could not save on this device!"); }
 }
 if(navigator.storage && navigator.storage.persist){ navigator.storage.persist().catch(()=>{}); }
@@ -735,8 +754,9 @@ function viewSettings(){
   <div class="setbox"><h3>Schedule times</h3>
     ${c.schedule.map((it,i)=>`<div class="setrow"><span>${esc(it.label)}</span><input type="time" value="${it.t}" onchange="setSchedTime(${i},this.value)" style="width:140px"></div>`).join("")}
   </div>
+  ${syncSettingsBox()}
   <div class="setbox"><h3>Backup &amp; export</h3>
-    <div class="note" style="margin-bottom:10px">Everything is saved on this iPad only. Save a backup at least once a week. ${nDays} day${nDays===1?"":"s"} saved · last backup: ${lb}</div>
+    <div class="note" style="margin-bottom:10px">Numbers are saved on this device (and in GitHub when you Upload). Save a backup at least once a week. ${nDays} day${nDays===1?"":"s"} saved · last backup: ${lb}</div>
     <div class="row"><button class="btn green" onclick="exportCSV()">Export to Excel (CSV)</button><button class="btn blue" onclick="backup()">Save backup file</button></div>
     <div class="row"><button class="btn grey" onclick="document.getElementById('rf').click()">Restore from backup</button></div>
     <input type="file" id="rf" accept=".json,application/json" style="display:none" onchange="restore(this)">
@@ -760,7 +780,7 @@ function setT(k,v){const n=parseInt(v,10); if(n>0){cfg()[k]=n; save(); toast("Sa
 function setPin(){const v=document.getElementById("np").value; if(!/^\d{4}$/.test(v)){toast("PIN must be 4 digits");return} cfg().pin=v; save(); toast("PIN changed"); render();}
 function setSchedTime(i,v){ if(!/^\d\d:\d\d$/.test(v)) return; cfg().schedule[i].t=v; cfg().schedule.sort((a,b)=>minsOf(a.t)-minsOf(b.t)); save(); toast("Schedule saved"); render(); }
 function resetCountTime(mode){const d=day(curDate,false); if(!d) return; const [a,b]=cKeys(mode||"am"); delete d[a]; delete d[b]; save(); toast("Count time cleared; it restarts at the next number"); render();}
-function clearDay(){ if(!confirmTwice()) return; delete store.days[curDate]; save(); toast("Day erased"); render(); }
+function clearDay(){ if(!confirmTwice()) return; delete store.days[curDate]; store.deleted=store.deleted||{}; store.deleted[curDate]=Date.now(); save(); toast("Day erased"); render(); }
 let _ct=0; function confirmTwice(){ const now=Date.now(); if(now-_ct<2500){_ct=0;return true} _ct=now; toast("Tap again to confirm"); return false; }
 
 /* ===================== Files ===================== */
@@ -801,13 +821,112 @@ async function backup(){
 function restore(inp){
   const file=inp.files[0]; if(!file) return;
   const r=new FileReader();
-  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s.config||!s.days) throw 0; store=s; save(); toast("Backup restored"); render(); }catch(e){ toast("That file is not a tracker backup"); } inp.value=""; };
+  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s.config||!s.days) throw 0; localStorage.setItem(KEY, JSON.stringify(s)); store=load(); memoInit(); toast("Backup restored"); render(); }catch(e){ toast("That file is not a tracker backup"); } inp.value=""; };
   r.readAsText(file);
 }
 
+/* ===================== Sync with GitHub (Upload / Download) ===================== */
+const SYNC_KEY="sw2099_sync";
+function syncCfg(){ try{ return JSON.parse(localStorage.getItem(SYNC_KEY))||{}; }catch(e){ return {}; } }
+function syncSet(o){ try{ localStorage.setItem(SYNC_KEY, JSON.stringify(Object.assign(syncCfg(),o))); }catch(e){} }
+function syncReady(){ const c=syncCfg(); return !!(c.repo&&c.token); }
+function b64encode(str){ const bytes=new TextEncoder().encode(str); let bin=""; for(let i=0;i<bytes.length;i+=0x8000) bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000)); return btoa(bin); }
+function b64decode(b64){ const bin=atob(b64.replace(/\s/g,"")); const bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i); return new TextDecoder().decode(bytes); }
+function ghHeaders(){ return {"Authorization":"Bearer "+syncCfg().token, "Accept":"application/vnd.github+json", "X-GitHub-Api-Version":"2022-11-28"}; }
+function ghErr(r){ return r.status===401?"The GitHub key isn't working (check it in Settings)": r.status===403?"GitHub refused: the key may not have write access": r.status===404?"Can't find the data repository (check the name in Settings)": "GitHub error "+r.status; }
+async function ghGet(){
+  const repo=syncCfg().repo;
+  const r=await fetch(`https://api.github.com/repos/${repo}/contents/data.json?ts=${Date.now()}`,{headers:ghHeaders(),cache:"no-store"});
+  if(r.status===404){ const r2=await fetch(`https://api.github.com/repos/${repo}`,{headers:ghHeaders(),cache:"no-store"}); if(!r2.ok) throw new Error(ghErr(r2)); return {data:null,sha:null}; }
+  if(!r.ok) throw new Error(ghErr(r));
+  const j=await r.json(); let b64=j.content;
+  if(!b64 && j.sha){ const rb=await fetch(`https://api.github.com/repos/${repo}/git/blobs/${j.sha}`,{headers:ghHeaders(),cache:"no-store"}); if(!rb.ok) throw new Error(ghErr(rb)); b64=(await rb.json()).content; }
+  const txt=b64?b64decode(b64):""; return {data:txt?JSON.parse(txt):null, sha:j.sha};
+}
+async function ghPut(obj,sha){
+  const repo=syncCfg().repo, who=syncCfg().device||"device";
+  const body={message:`Upload from ${who} · ${new Date().toLocaleString("en-US")}`, content:b64encode(JSON.stringify(obj))};
+  if(sha) body.sha=sha;
+  const r=await fetch(`https://api.github.com/repos/${repo}/contents/data.json`,{method:"PUT",headers:Object.assign({"Content-Type":"application/json"},ghHeaders()),body:JSON.stringify(body)});
+  if(r.status===409||r.status===422) return false;
+  if(!r.ok) throw new Error(ghErr(r));
+  return true;
+}
+/* combine two copies: for each day the newer one wins; an erased day stays erased unless it changed after */
+function mergeStores(a,b){
+  if(!b||!b.days) return JSON.parse(JSON.stringify(a));
+  const out=JSON.parse(JSON.stringify(a)); out.days={};
+  const del=Object.assign({}, b.deleted||{}); Object.entries(a.deleted||{}).forEach(([k,v])=>{ del[k]=Math.max(v, del[k]||0); });
+  new Set([...Object.keys(a.days), ...Object.keys(b.days)]).forEach(s=>{
+    const da=a.days[s], db=b.days[s]; let pick;
+    if(da&&db){ const ma=da._mod||0, mb=db._mod||0; pick = mb>ma ? db : ma>mb ? da : (JSON.stringify(db).length>JSON.stringify(da).length ? db : da); }
+    else pick = da||db;
+    if(del[s] && del[s] >= (pick._mod||0)) return;
+    out.days[s]=JSON.parse(JSON.stringify(pick));
+  });
+  out.deleted=del;
+  if(b.config && (b.config._mod||0) > (a.config._mod||0)) out.config=JSON.parse(JSON.stringify(b.config));
+  out.lastBackup=a.lastBackup||null;
+  return out;
+}
+function adopt(merged){ localStorage.setItem(KEY, JSON.stringify(merged)); store=load(); memoInit(); }
+let syncBusy=false;
+async function syncUpload(){
+  if(syncBusy) return; if(!syncReady()){ toast("Set up Sync in Settings first"); return; }
+  syncBusy=true; syncShow("Uploading…");
+  try{
+    for(let tries=0; tries<3; tries++){
+      const {data,sha}=await ghGet(); const merged=mergeStores(store,data);
+      if(await ghPut(merged,sha)){ adopt(merged); syncSet({lastUp:Date.now()}); toast("Uploaded ✓"); syncBusy=false; render(); return; }
+    }
+    throw new Error("Someone else uploaded at the same time. Try again.");
+  }catch(e){ toast(e.message||"Upload failed (no internet?)"); }
+  syncBusy=false; render();
+}
+async function syncDownload(){
+  if(syncBusy) return; if(!syncReady()){ toast("Set up Sync in Settings first"); return; }
+  syncBusy=true; syncShow("Downloading…");
+  try{
+    const {data}=await ghGet();
+    if(!data){ toast("Nothing has been uploaded yet"); }
+    else { adopt(mergeStores(store,data)); syncSet({lastDown:Date.now()}); toast("Downloaded ✓"); }
+  }catch(e){ toast(e.message||"Download failed (no internet?)"); }
+  syncBusy=false; render();
+}
+function syncShow(msg){ const el=document.getElementById("syncInfo"); if(el) el.textContent=msg; }
+function syncBar(){
+  const bar=document.getElementById("syncbar"); if(!bar) return;
+  if(!syncReady()){ bar.style.display="none"; return; }
+  bar.style.display="";
+  if(syncBusy) return;
+  const c=syncCfg(); const t=[c.lastUp?"up "+clock(c.lastUp):"", c.lastDown?"down "+clock(c.lastDown):""].filter(Boolean).join(" · ");
+  syncShow(t?("Last "+t):"Not synced yet");
+}
+function syncSettingsBox(){
+  const c=syncCfg();
+  return `<div class="setbox"><h3>Sync with GitHub (Upload / Download)</h3>
+    <div class="note" style="margin-bottom:10px">Upload sends this device's numbers to the private data repository; Download brings in what other devices uploaded. Each day keeps whichever copy was changed last. The key stays on this device only (not in backups or exports).</div>
+    <div class="setrow"><span>Data repository</span><input id="syRepo" style="width:260px;text-align:left" value="${esc(c.repo||"TonyShopTracker/production-data")}"></div>
+    <div class="setrow"><span>This device's name</span><input id="syDev" style="width:260px;text-align:left" placeholder="iPad, Tony's phone, Office PC" value="${esc(c.device||"")}"></div>
+    <div class="setrow"><span>GitHub key</span><input id="syTok" type="password" autocomplete="off" style="width:260px;text-align:left" placeholder="${c.token?"saved · paste a new one to replace":"github_pat_…"}"></div>
+    <div class="row"><button class="btn blue" onclick="saveSync()">Save &amp; test</button>${c.token?`<button class="btn red" onclick="forgetSync()">Remove key from this device</button>`:""}</div>
+    <div class="note" style="margin-top:10px">${c.token?`Status: key saved${c.lastUp?" · last upload "+new Date(c.lastUp).toLocaleString("en-US"):""}${c.lastDown?" · last download "+new Date(c.lastDown).toLocaleString("en-US"):""}`:"Status: not set up on this device"}</div>
+  </div>`;
+}
+async function saveSync(){
+  const repo=document.getElementById("syRepo").value.trim(), dev=document.getElementById("syDev").value.trim(), tok=document.getElementById("syTok").value.trim();
+  if(!/^[\w.-]+\/[\w.-]+$/.test(repo)){ toast("Repository should look like owner/name"); return; }
+  syncSet({repo, device:dev}); if(tok) syncSet({token:tok});
+  if(!syncReady()){ toast("Paste the GitHub key"); render(); return; }
+  toast("Testing…");
+  try{ await ghGet(); toast("Sync is set up ✓"); }catch(e){ toast(e.message); }
+  render();
+}
+function forgetSync(){ if(!confirmTwice()) return; const c=syncCfg(); delete c.token; try{ localStorage.setItem(SYNC_KEY, JSON.stringify(c)); }catch(e){} toast("Key removed from this device"); render(); }
+
 /* ===================== Render ===================== */
 function render(){
-  header(); tabs();
+  header(); tabs(); syncBar();
   const v=document.getElementById("view");
   v.innerHTML = tab==="today"?viewToday(): tab==="schedule"?viewSchedule(): tab==="move"?viewMove(): tab==="count"?viewCount(): tab==="week"?viewWeek(): tab==="issues"?viewIssues(): viewSettings();
 }
