@@ -224,7 +224,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.16";
+const APP_VERSION = "1.17";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -256,7 +256,7 @@ const DEFAULT_CONFIG = {
       {id:"E", title:"Pre-Spray (Seal)", kind:"pile", items:["Cue/Shaft","Shafts"]}]},
     {id:"fs", name:"Final Spray (Clear)", startFromPiles:true, groups:[
       {id:"F", title:"Final Spray (Clear)", kind:"pile", items:["Cue/Shaft","Shaft","JP","Ext"]}]},
-    {id:"dr", name:"Dry Room", startFromPiles:true, groups:[
+    {id:"dr", name:"Dry Room", startFromPiles:true, addTypes:["Cues","Shafts","Extensions","JPs"], groups:[
       {id:"DS", title:"Dry Room · Seal", short:"Seal", kind:"pile", items:["Cues","Shafts","Extensions","JPs"]},
       {id:"DC", title:"Dry Room · Clear", short:"Clear", kind:"pile", items:["Cues","Shafts","Extensions","JPs"]}]},
     {id:"bf", name:"Buffing", startFromPiles:true, groups:[
@@ -295,6 +295,8 @@ function load(){
       s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if((g.kind==="people"||g.kind==="ticks") && g.items.includes("Casey") && !g.items.includes("George")) g.items.push("George"); }));
       /* v1.13: no per-person On hand (it's part of the Surface Prep Ready pile) */
       s.config.depts.forEach(dp=>{ if(dp.groups) dp.groups=dp.groups.filter(g=>!(g.kind==="pile"&&g.title==="On hand")); });
+      /* v1.17: Dry Room additions by type */
+      { const dr=s.config.depts.find(dp=>dp.id==="dr"); if(dr && !dr.addTypes) dr.addTypes=["Cues","Shafts","Extensions","JPs"]; }
       /* v1.15: Buffing has two piles (inside, Katie outside) and Katie's tick sheet by type */
       { const bf=s.config.depts.find(dp=>dp.id==="bf"); if(bf && !bf.groups){ const nd=JSON.parse(JSON.stringify(DEFAULT_CONFIG.depts.find(dp=>dp.id==="bf"))); bf.startFromPiles=true; bf.groups=nd.groups; } }
       /* v1.12: each person's done comes from the tick sheet; move rounds take one Surface Prep number */
@@ -432,7 +434,8 @@ function completedOf(def, dd){
   return has(dd.completed) ? +dd.completed : null;
 }
 function recvOf(dd){ if(!dd) return null; return has(dd.received)? +dd.received : (has(dd.receivedAuto)? +dd.receivedAuto : null); }
-function inOf(dd){ if(!dd) return 0; return sum([recvOf(dd), ...dd.added]); }
+function inOf(dd){ if(!dd) return 0; return sum([recvOf(dd), ...dd.added, ...Object.values(dd.addedT||{})]); }
+function addedTypeLine(def,dd){ if(!def.addTypes||!dd||!dd.addedT) return ""; return def.addTypes.filter(t=>has(dd.addedT[t])&&+dd.addedT[t]>0).map(t=>`${dd.addedT[t]} ${t}`).join(", "); }
 
 /* ===== moves: what the tracker moved out of each DONE spot, per round ===== */
 function moveRounds(){return cfg().schedule.filter(it=>it.kind==="move")}
@@ -600,13 +603,15 @@ function closeSheet(){person=null; document.getElementById("scrim").classList.re
 function getVal(k){const dd=deptData(curDate,cfg().depts[cur].id,true);
   if(/^tt:/.test(k)){const [,m,n,ty]=k.split(":"); return tickType(curDate,cfg().depts[cur],m,n,ty);}
   if(/^(tk|tr|oh):/.test(k)){const [t,m,n]=k.split(":"); const def=cfg().depts[cur]; return t==="tk"?tickNew(curDate,def,m,n):t==="tr"?tickRw(curDate,def,m,n):ohVal(curDate,def,m,n);}
+  if(k.startsWith("at:")) return (dd.addedT||{})[k.slice(3)];
   if(k.startsWith("added")) return dd.added[+k.slice(5)];
   if(k.includes("|")) return dd.items[k];
   return dd[k];}
 function setVal(k,v){const dd=deptData(curDate,cfg().depts[cur].id,true);
   if(/^tt:/.test(k)){const [,m,n,ty]=k.split(":"); tickSet(curDate,cfg().depts[cur],m,n+"|"+ty,v); save(); return;}
   if(/^(tk|tr|oh):/.test(k)){const [t,m,n]=k.split(":"); const def=cfg().depts[cur]; if(t==="tk") tickSet(curDate,def,m,n,v); else if(t==="tr") tickSet(curDate,def,m,n+"|R",v); else ohSet(curDate,def,m,n,v); save(); return;}
-  if(k.startsWith("added")) dd.added[+k.slice(5)]=v;
+  if(k.startsWith("at:")){ dd.addedT=dd.addedT||{}; dd.addedT[k.slice(3)]=v; }
+  else if(k.startsWith("added")) dd.added[+k.slice(5)]=v;
   else if(k.includes("|")) dd.items[k]=v;
   else dd[k]=v; save();}
 function fld(k,label,cls=""){
@@ -654,7 +659,7 @@ function drawSheet(){
   if(tg) h+=tickTable(def,tg);
   h+=`<div class="sec">Today</div><div class="fields">
     ${def.startFromPiles?calc("Start of Day (piles)",startOf(def,dd)):fld("start","Start of Day")}
-    ${has(dd.receivedAuto)&&!has(dd.received)?calc("Received (from moves)",dd.receivedAuto):fld("received","Received")}${fld("added0","Added")}${fld("added1","Added")}${fld("added2","Added")}
+    ${has(dd.receivedAuto)&&!has(dd.received)?calc("Received (from moves)",dd.receivedAuto):fld("received","Received")}${def.addTypes?def.addTypes.map(t=>fld("at:"+t,t+" added")).join("")+[0,1,2].filter(i=>has(dd.added[i])).map(i=>fld("added"+i,"Added (no type)")).join(""):fld("added0","Added")+fld("added1","Added")+fld("added2","Added")}
     ${ppl?calc("Completed (people)",completedOf(def,dd)):has(dd.movedAuto)?calc("Completed (from moves)",dd.movedAuto):fld("completed","Completed")}
     ${calc("Total to Work",totalOf(def,dd))}${calc("Left Over",leftOf(def,dd))}</div>`;
   h+=keypad("Done","closeSheet()");
@@ -666,7 +671,7 @@ function fieldOrder(){
   pilesOf(def).filter(g=>g.title!=="On hand").forEach(g=>g.items.forEach(n=>o.push(itemKey(g.id,n))));
   const ppl=peopleOf(def); if(ppl) ppl.items.forEach(n=>o.push(itemKey(ppl.id,n)));
   if(!def.startFromPiles) o.push("start");
-  o.push("received","added0","added1","added2"); if(!ppl) o.push("completed");
+  o.push("received"); if(def.addTypes){ def.addTypes.forEach(t=>o.push("at:"+t)); const dd0=deptData(curDate,def.id,false); [0,1,2].forEach(i=>{ if(dd0&&has(dd0.added[i])) o.push("added"+i); }); } else o.push("added0","added1","added2"); if(!ppl) o.push("completed");
   return o;
 }
 function nextField(){const o=fieldOrder();const i=o.indexOf(field);field=o[(i+1)%o.length];buf="";drawSheet()}
@@ -680,7 +685,7 @@ function key(k){
 function cleanupDay(s){
   const d=store.days[s]; if(!d) return;
   Object.keys(d.depts).forEach(id=>{const x=d.depts[id];
-    const empty=!has(x.start)&&!has(x.received)&&!x.added.some(has)&&!has(x.completed)&&!Object.values(x.items).some(has);
+    const empty=!has(x.start)&&!has(x.received)&&!x.added.some(has)&&!Object.values(x.addedT||{}).some(has)&&!has(x.completed)&&!Object.values(x.items).some(has);
     if(empty) delete d.depts[id];});
   if(!Object.keys(d.depts).length && !d.issues.length && !d.countStarted && !d.pmStarted && !d.pm && !d.eodStarted && !d.eod && !(d.moves&&Object.keys(d.moves).length) && !(d.sched&&Object.keys(d.sched).length)) delete store.days[s];
   save();
@@ -919,7 +924,7 @@ function exportCSV(){
   const rows=[["Date","Day","Department","Start of Day","Received","Added 1","Added 2","Added 3","Total to Work","Completed","Left Over","Detail"]];
   Object.keys(store.days).sort().forEach(s=>{
     cfg().depts.forEach(def=>{const dd=deptData(s,def.id,false); if(!dd) return;
-      const det=(def.groups||[]).flatMap(g=>g.items.filter(n=>has(dd.items[itemKey(g.id,n)])).map(n=>n+"="+dd.items[itemKey(g.id,n)])).join("; ");
+      const det=[...(def.groups||[]).flatMap(g=>g.items.filter(n=>has(dd.items[itemKey(g.id,n)])).map(n=>n+"="+dd.items[itemKey(g.id,n)])), ...(addedTypeLine(def,dd)?["added: "+addedTypeLine(def,dd)]:[])].join("; ");
       rows.push([s,dayName(s),def.name,startOf(def,dd),dd.received,dd.added[0],dd.added[1],dd.added[2],totalOf(def,dd),completedOf(def,dd),leftOf(def,dd),det]);});
     moveRounds().forEach(it=>{const r=store.days[s].moves&&store.days[s].moves[it.label]; if(!r) return;
       cfg().depts.forEach(def=>{const v=movedIn(s,it.label,def); if(v==null) return;
@@ -1126,6 +1131,11 @@ function buildReport(){
     });
     if(dR>0) add("people","info",`${def.name} rework today: ${dR} of ${dT} (${Math.round(dR/dT*100)}%).`);
   });
+
+  /* ---- additions by type ---- */
+  depts.forEach(def=>{ if(!def.addTypes) return; const dd=deptData(curDate,def.id,false); if(!dd) return;
+    const tl=addedTypeLine(def,dd), plain=sum(dd.added.filter(has)); const tot=sum(Object.values(dd.addedT||{}).filter(has))+plain;
+    if(tot>0) add("piles", plain>0?"warn":"info", `${def.name} added ${tot} today${tl?": "+tl:""}${plain>0?` (${plain} not split by type: tap ${def.name} and move them into the type boxes)`:""}.`); });
 
   /* ---- count quality ---- */
   used.forEach(m=>{
