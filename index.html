@@ -195,6 +195,12 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 .fields.three{grid-template-columns:repeat(3,1fr)}
 .updbar{position:fixed;left:50%;top:calc(10px + env(safe-area-inset-top));transform:translateX(-50%);z-index:30;background:var(--accent);color:#08101f;border:0;border-radius:12px;padding:12px 18px;font-weight:800;font-size:15px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
 .fields.five{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+.tgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0 6px}
+.tbox{background:var(--panel);border:2px solid var(--line);border-radius:12px;padding:10px 12px;text-align:left;display:flex;flex-direction:column;gap:2px}
+.tbox span{font-size:15px;font-weight:800;color:var(--text)}
+.tbox b{font-size:30px;color:var(--accent)}
+.tbox.sel{border-color:var(--accent);background:#14233d}
+.ttot{color:var(--mute);font-size:14px}.ttot b{color:var(--text);font-size:18px}
 </style>
 </head>
 <body>
@@ -224,7 +230,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.18";
+const APP_VERSION = "1.19";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -252,12 +258,13 @@ const DEFAULT_CONFIG = {
     {id:"sp", name:"Surface Prep", startFromPiles:true, groups:[
       {id:"Dp", title:"Piles", kind:"pile", items:["Pre Surface Prep","Surface Prep Ready"]},
       {id:"D", title:"Done by person (tick sheet)", kind:"ticks", items:["Casey","Ivan","Amber","George"]}]},
-    {id:"ps", name:"Pre-Spray (Seal)", startFromPiles:true, groups:[
+    {id:"ps", name:"Pre-Spray (Seal)", startFromPiles:true, moveTypes:["Cues","Shafts","Extensions","JPs"], groups:[
       {id:"E", title:"Pre-Spray (Seal)", kind:"pile", items:["Cue/Shaft","Shafts"]}]},
+    {id:"drs", name:"Dry Room – Seal side", startFromPiles:true, addTypes:["Cues","Shafts","Extensions","JPs"], moveTypes:["Cues","Shafts","Extensions","JPs"], groups:[
+      {id:"DS", title:"Dry Room · Seal", short:"Seal", kind:"pile", items:["Cues","Shafts","Extensions","JPs"]}]},
     {id:"fs", name:"Final Spray (Clear)", startFromPiles:true, moveTypes:["Cues","Shafts","Extensions","JPs"], groups:[
       {id:"F", title:"Final Spray (Clear)", kind:"pile", items:["Cue/Shaft","Shaft","JP","Ext"]}]},
-    {id:"dr", name:"Dry Room", startFromPiles:true, addTypes:["Cues","Shafts","Extensions","JPs"], groups:[
-      {id:"DS", title:"Dry Room · Seal", short:"Seal", kind:"pile", items:["Cues","Shafts","Extensions","JPs"]},
+    {id:"drc", name:"Dry Room – Clear side", startFromPiles:true, addTypes:["Cues","Shafts","Extensions","JPs"], moveTypes:["Cues","Shafts","Extensions","JPs"], groups:[
       {id:"DC", title:"Dry Room · Clear", short:"Clear", kind:"pile", items:["Cues","Shafts","Extensions","JPs"]}]},
     {id:"bf", name:"Buffing", startFromPiles:true, groups:[
       {id:"K", title:"Piles", kind:"pile", items:["Buffing (inside)","Katie (outside)"]},
@@ -268,7 +275,6 @@ const DEFAULT_CONFIG = {
 
 let _memo={};
 let store = load();
-memoInit();
 let curDate = todayStr();
 let tab = "today";
 let unlocked = false;
@@ -279,10 +285,30 @@ function load(){
     if(raw){ const s = JSON.parse(raw); if(s && s.config && s.days){ if(!s.config.schedule) s.config.schedule=JSON.parse(JSON.stringify(DEFAULT_CONFIG.schedule));
       s.config.schedule.forEach(it=>{ if(it.label==="Quick check"){ it.label="Afternoon Count"; it.note="Count every pile again after lunch"; it.kind="count_pm"; } });
       s.config.depts.forEach(dp=>{ if(dp.id==="sp") dp.startFromPiles=true; });
-      { const drDef=JSON.parse(JSON.stringify(DEFAULT_CONFIG.depts.find(dp=>dp.id==="dr")));
-        const di=s.config.depts.findIndex(dp=>dp.id==="dr");
-        if(di<0){ const i=s.config.depts.findIndex(dp=>dp.id==="bf"); s.config.depts.splice(i<0?s.config.depts.length:i,0,drDef); }
-        else if(!s.config.depts[di].groups){ s.config.depts[di]=drDef; } }
+      /* v1.19: the Dry Room is two stops: Seal side (after Seal, before Clear) and Clear side (after Clear, before Buffing) */
+      { const D=id=>JSON.parse(JSON.stringify(DEFAULT_CONFIG.depts.find(dp=>dp.id===id)));
+        const L=s.config.depts; const di=L.findIndex(dp=>dp.id==="dr");
+        if(di>=0) L.splice(di,1);
+        if(!L.some(dp=>dp.id==="drs")){ const i=L.findIndex(dp=>dp.id==="ps"); L.splice(i<0?L.length:i+1,0,D("drs")); }
+        if(!L.some(dp=>dp.id==="drc")){ const i=L.findIndex(dp=>dp.id==="fs"); L.splice(i<0?L.length:i+1,0,D("drc")); }
+        ["ps","fs"].forEach(id=>{ const dp=L.find(x=>x.id===id); if(dp && !dp.moveTypes) dp.moveTypes=D(id).moveTypes; });
+        /* order: Seal -> Dry Seal -> Clear -> Dry Clear -> Buffing */
+        const order=["pi","fc","sa","sp","ps","drs","fs","drc","bf","qc"];
+        L.sort((a,b)=>{const x=order.indexOf(a.id), y=order.indexOf(b.id); return (x<0?99:x)-(y<0?99:y);});
+        /* move each day's old Dry Room numbers to the matching side */
+        s._mig=s._mig||[];
+        Object.entries(s.days||{}).forEach(([ds,d])=>{ let ch=false;
+          const old=d.depts&&d.depts.dr;
+          if(old){ const a={start:null,received:null,added:[null,null,null],completed:null,items:{}}, c=JSON.parse(JSON.stringify(old)); c.items={};
+            Object.entries(old.items||{}).forEach(([k,v])=>{ if(/^DS\|/.test(k)) a.items[k]=v; else c.items[k]=v; });
+            delete c.movedAuto; delete c.receivedAuto; delete c.receivedT; delete c.movedT;
+            if(!d.depts.drs) d.depts.drs=a; if(!d.depts.drc) d.depts.drc=c; delete d.depts.dr; ch=true; }
+          ["pm","eod"].forEach(m=>{ const x=d[m]&&d[m].dr; if(!x) return; const a={}, c={};
+            Object.entries(x).forEach(([k,v])=>{ if(/^DS\|/.test(k)) a[k]=v; else c[k]=v; });
+            if(!d[m].drs) d[m].drs=a; if(!d[m].drc) d[m].drc=c; delete d[m].dr; ch=true; });
+          Object.values(d.moves||{}).forEach(r=>{ if(r.v && ("dr" in r.v)){ if(!("drc" in r.v)) r.v.drc=r.v.dr; delete r.v.dr; ch=true; } });
+          if(ch) s._mig.push(ds); });
+      }
       s.config.schedule.forEach(it=>{ if(!it.kind && (it.label==="Sweep"||/^Move round/.test(it.label))) it.kind="move";
         if(it.label==="Close out"){ it.kind="close"; it.note="Look over Today: who hit 40, the Watch box, Issues"; } });
       if(!s.config.schedule.some(it=>it.kind==="count_eod")){
@@ -297,8 +323,7 @@ function load(){
       s.config.depts.forEach(dp=>{ if(dp.groups) dp.groups=dp.groups.filter(g=>!(g.kind==="pile"&&g.title==="On hand")); });
       /* v1.18: what leaves Final Spray (Clear) is entered by type */
       { const fs=s.config.depts.find(dp=>dp.id==="fs"); if(fs && !fs.moveTypes) fs.moveTypes=["Cues","Shafts","Extensions","JPs"]; }
-      /* v1.17: Dry Room additions by type */
-      { const dr=s.config.depts.find(dp=>dp.id==="dr"); if(dr && !dr.addTypes) dr.addTypes=["Cues","Shafts","Extensions","JPs"]; }
+
       /* v1.15: Buffing has two piles (inside, Katie outside) and Katie's tick sheet by type */
       { const bf=s.config.depts.find(dp=>dp.id==="bf"); if(bf && !bf.groups){ const nd=JSON.parse(JSON.stringify(DEFAULT_CONFIG.depts.find(dp=>dp.id==="bf"))); bf.startFromPiles=true; bf.groups=nd.groups; } }
       /* v1.12: each person's done comes from the tick sheet; move rounds take one Surface Prep number */
@@ -322,7 +347,11 @@ function stampMods(){
   Object.keys(store.days).forEach(s=>{const j=_j(store.days[s]); if(_memo[s]!==j){store.days[s]._mod=now; _memo[s]=j;}});
   const cj=_j(store.config); if(_memo.__cfg!==cj){store.config._mod=now; _memo.__cfg=cj;}
 }
+let _noSave=false;
+function postLoad(){ const m=store._mig||[]; delete store._mig; if(!m.length) return; _noSave=true; try{ m.forEach(ds=>recalcMoves(ds)); }catch(e){} _noSave=false;
+  try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){} }
 function save(){
+  if(_noSave) return;
   try{ stampMods(); localStorage.setItem(KEY, JSON.stringify(store)); }
   catch(e){ toast("Could not save on this device!"); }
 }
@@ -795,6 +824,16 @@ function moveSteps(){const s=[]; cfg().depts.forEach((def,i)=>{const p=peopleOf(
   if(p) p.items.forEach(n=>s.push({def,k:itemKey(p.id,n),label:"Finished by "+n}));
   else if(def.moveTypes) def.moveTypes.forEach(t=>s.push({def,k:def.id+"|"+t,label:"Finished · "+t,mtype:t}));
   else s.push({def,k:def.id,label:last?"Finished (passed QC)":"Finished · moved out of DONE"});}); return s;}
+/* all the types for one department on one screen; the selected one is what the keypad types into */
+function typedPanel(s,st,shown){
+  const d=day(curDate,false), r=d&&d.moves&&d.moves[moveLabel];
+  const idx=s.map((x,i)=>({x,i})).filter(o=>o.x.def.id===st.def.id&&o.x.mtype);
+  let tot=0, any=false;
+  const boxes=idx.map(o=>{ const sel=o.i===mstep; const v=sel?(mbuf!==""?mbuf:f(r?r.v[o.x.k]:null)):f(r?r.v[o.x.k]:null);
+    const nv=r?r.v[o.x.k]:null; if(sel&&mbuf!==""){tot+=+mbuf;any=true} else if(has(nv)){tot+=+nv;any=true}
+    return `<button class="tbox ${sel?'sel':''}" onclick="mbuf='';mstep=${o.i};render()"><span>${esc(o.x.mtype)}</span><b>${v}</b></button>`; }).join("");
+  return `<div class="tgrid">${boxes}</div><div class="ttot">Total this round: <b>${any?tot:"–"}</b></div>`;
+}
 function mget(st){const d=day(curDate,false); const r=d&&d.moves&&d.moves[moveLabel]; return r?r.v[st.k]:null}
 function mset(st,v){const d=day(curDate,true); d.moves=d.moves||{}; const r=d.moves[moveLabel]=d.moves[moveLabel]||{at:Date.now(),v:{}}; r.v[st.k]=v; if(st.mtype && has(v)) delete r.v[st.def.id]; recalcMoves(curDate);}
 function viewMove(){
@@ -810,10 +849,10 @@ function viewMove(){
   const so=completedOf(st.def,deptData(curDate,st.def.id,false));
   return `<div class="stepbox"><div class="prog">${s.map((_,i)=>`<i class="${i<=mstep?'d':''}"></i>`).join("")}</div><div class="sgrid"><div class="sl">
   <div style="color:var(--mute);font-size:13px">${esc(moveLabel)} (${it?hm(it.t):""}) · step ${mstep+1} of ${s.length} · how many did you take out of the DONE spot?</div>
-  <h2 style="margin:6px 0 0">${esc(st.def.name)}</h2><div style="color:var(--mute)">${esc(st.label)}</div>
+  <h2 style="margin:6px 0 0">${esc(st.def.name)}</h2><div style="color:var(--mute)">${st.mtype?"What did you take out? Tap a box, type the number, Next goes to the next box.":esc(st.label)}</div>
   <div style="color:var(--mute);font-size:12px;margin-top:4px">Today so far: ${f(so)} of ${cfg().targetDay}</div>
   ${st.mtype?(()=>{const d=day(curDate,false), r=d&&d.moves&&d.moves[moveLabel]; const old=r?r.v[st.def.id]:null; return has(old)&&+old>0?`<div style="color:var(--warn);font-size:12px;margin-top:4px">This round was entered as ${old} without a type. Type the split; the ${old} goes away once you do.</div>`:""})():""}
-  <div class="big" style="color:var(--accent)">${shown}</div>
+  ${st.mtype?typedPanel(s,st,shown):`<div class="big" style="color:var(--accent)">${shown}</div>`}
   </div><div class="sr"><div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="mkey('${n}')">${n}</button>`).join("")}<button onclick="mkey('C')">Clear</button><button onclick="mkey('0')">0</button><button onclick="mkey('B')">⌫</button></div>
   <div class="row"><button class="btn grey" onclick="mmove(-1)">‹ Back</button><button class="btn blue" onclick="mmove(1)">${mstep===s.length-1?'Finish':(has(v)||mbuf!==""?'Next ›':'None · Next ›')}</button></div></div></div></div>`;
 }
@@ -959,7 +998,7 @@ async function backup(){
 function restore(inp){
   const file=inp.files[0]; if(!file) return;
   const r=new FileReader();
-  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s.config||!s.days) throw 0; localStorage.setItem(KEY, JSON.stringify(s)); store=load(); memoInit(); toast("Backup restored"); render(); }catch(e){ toast("That file is not a tracker backup"); } inp.value=""; };
+  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s.config||!s.days) throw 0; localStorage.setItem(KEY, JSON.stringify(s)); store=load(); postLoad(); memoInit(); toast("Backup restored"); render(); }catch(e){ toast("That file is not a tracker backup"); } inp.value=""; };
   r.readAsText(file);
 }
 
@@ -1007,7 +1046,7 @@ function mergeStores(a,b){
   out.lastBackup=a.lastBackup||null;
   return out;
 }
-function adopt(merged){ localStorage.setItem(KEY, JSON.stringify(merged)); store=load(); memoInit(); }
+function adopt(merged){ localStorage.setItem(KEY, JSON.stringify(merged)); store=load(); postLoad(); memoInit(); }
 let syncBusy=false;
 async function syncUpload(){
   if(syncBusy) return; if(!syncReady()){ toast("Set up Sync in Settings first"); return; }
@@ -1069,7 +1108,7 @@ function snapVal2(mode,def,k){
 }
 function stepKeys(def){ return countSteps().filter(st=>st.def.id===def.id && !st.tick).map(st=>({k:st.k,label:st.label})); }
 function countUsed(mode){ return cfg().depts.some(def=>stepKeys(def).some(x=>has(snapVal2(mode,def,x.k)))); }
-function prettyItem(def,label){ if(/^On hand: /.test(label)) return label.slice(9)+" on hand"; return label.replace(/^Dry Room · /,"").replace(/^[^:]+: /,"")+(/^Dry Room · (Seal|Clear)/.test(label)?" ("+label.match(/^Dry Room · (Seal|Clear)/)[1]+")":""); }
+function prettyItem(def,label){ if(/^On hand: /.test(label)) return label.slice(9)+" on hand"; if(/side$/.test(def.name)) return label.replace(/^[^:]+: /,""); return label.replace(/^Dry Room · /,"").replace(/^[^:]+: /,"")+(/^Dry Room · (Seal|Clear)/.test(label)?" ("+label.match(/^Dry Room · (Seal|Clear)/)[1]+")":""); }
 function compareCounts(def,m1,m2){
   const keys=stepKeys(def); let t1=0,t2=0,shared=0; const miss=[];
   keys.forEach(x=>{ const a=snapVal2(m1,def,x.k), b=snapVal2(m2,def,x.k);
@@ -1158,6 +1197,10 @@ function buildReport(){
       const oldStart=def.startFromPiles && has(snapVal2(m,def,"start"));
       stepKeys(def).forEach(x=>{ if(/^On hand: /.test(x.label)&&!ohUsed) return; if(oldStart) return; if(!has(snapVal2(m,def,x.k))) blanks.push(`${def.name}: ${prettyItem(def,x.label)}`); }); });
     if(blanks.length) add("quality","warn",`${COUNTS[m].at} count left ${blanks.length} box${blanks.length>1?"es":""} blank: ${blanks.slice(0,8).join("; ")}${blanks.length>8?"; and "+(blanks.length-8)+" more":""}.`);
+    // the two Dry Room sides with identical numbers
+    { const A=depts.find(x=>x.id==="drs"), B=depts.find(x=>x.id==="drc");
+      if(A&&B){ const same=["Cues","Shafts","Extensions","JPs"].filter(n=>{ const x=snapVal2(m,A,"DS|"+n), y=snapVal2(m,B,"DC|"+n); return has(x)&&has(y)&&+x===+y&&+x>0; });
+        if(same.length>=2) add("quality","warn",`${COUNTS[m].at} count: Dry Room Seal side and Clear side have the same numbers for ${same.join(" and ")}. Double-check they weren't entered twice.`); } }
     // two sides of the same department with identical numbers
     depts.forEach(def=>{ const gs=pilesOf(def); if(gs.length<2) return;
       for(let i=0;i<gs.length;i++) for(let j=i+1;j<gs.length;j++){ const a=gs[i], b=gs[j]; if(a.items.join()!==b.items.join()) continue;
@@ -1219,6 +1262,8 @@ fitWindow(); window.addEventListener("load",()=>setTimeout(fitWindow,50));
 ["gesturestart","gesturechange","gestureend"].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault(),{passive:false}));
 let _lastTouch=0; document.addEventListener("touchend",e=>{const n=Date.now(); if(n-_lastTouch<300 && !(e.target.closest&&e.target.closest("textarea,input"))) e.preventDefault(); _lastTouch=n;},{passive:false});
 
+postLoad();
+memoInit();
 render();
 setInterval(()=>{ if(document.getElementById("scrim").classList.contains("on")) return; if(tab==="today"||tab==="schedule"){ const a=document.activeElement; if(a&&a.tagName==="TEXTAREA") return; render(); } }, 60000);
 
