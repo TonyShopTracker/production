@@ -224,7 +224,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.15";
+const APP_VERSION = "1.16";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -691,16 +691,25 @@ let step=0, cbuf="", countMode="am";
 function countSteps(){
   const s=[];
   cfg().depts.forEach(def=>{
-    if(def.startFromPiles) pilesOf(def).forEach(g=>g.items.forEach(n=>s.push({def,label:g.title+": "+n,k:itemKey(g.id,n)})));
+    if(def.startFromPiles){ pilesOf(def).forEach(g=>g.items.forEach(n=>s.push({def,label:g.title+": "+n,k:itemKey(g.id,n)})));
+      /* tick sheets right after the piles */
+      const tg=tickGroup(def), ts=tickTypes(def);
+      if(tg) tg.items.forEach(n=>{
+        (ts?ts.map(t=>({t,lab:(TYPE_NAME[t]||t)+" (X)"})):[{t:null,lab:"New (X)"}]).forEach(x=>s.push({def,label:n+" · "+x.lab,k:"tick|"+n+"|"+(x.t||"N"),tick:{n,t:x.t}}));
+        s.push({def,label:n+" · Rework (R)",k:"tick|"+n+"|R",tick:{n,t:"R"}}); });
+    }
     else { pilesOf(def).forEach(g=>g.items.forEach(n=>s.push({def,label:n,k:itemKey(g.id,n)}))); s.push({def,label:"Tickets on hand (Start of Day)",k:"start"}); }
   });
   return s;
 }
+function tickKeyOf(st){ return st.tick.t==="R"?st.tick.n+"|R":st.tick.t?st.tick.n+"|"+st.tick.t:st.tick.n; }
 function cget(st){
+  if(st.tick) return tickRaw(curDate,st.def,countMode,tickKeyOf(st));
   if(countMode!=="am"){const d=day(curDate,false); const m=countMode; return d&&d[m]&&d[m][st.def.id]?d[m][st.def.id][st.k]:null;}
   const dd=deptData(curDate,st.def.id,false); if(!dd) return null; return st.k==="start"?dd.start:dd.items[st.k]}
 function cset(st,v){
   const d=day(curDate,true); const [a]=cKeys(countMode);
+  if(st.tick){ tickSet(curDate,st.def,countMode,tickKeyOf(st),v); if(!d[a] && has(v)) d[a]=Date.now(); save(); return; }
   if(countMode!=="am"){ const m=countMode; d[m]=d[m]||{}; d[m][st.def.id]=d[m][st.def.id]||{}; d[m][st.def.id][st.k]=v; }
   else { const dd=deptData(curDate,st.def.id,true); if(st.k==="start") dd.start=v; else dd.items[st.k]=v; }
   if(!d[a] && has(v)) d[a]=Date.now(); save()}
@@ -712,7 +721,7 @@ function viewCount(){
   return modeBar()+`<div class="stepbox"><div class="prog">${s.map((_,i)=>`<i class="${i<=step?'d':''}"></i>`).join("")}</div><div class="sgrid"><div class="sl">
   <div style="color:var(--mute);font-size:13px">Step ${step+1} of ${s.length} · ${ct?`<span style="color:var(--warn)">${ct}</span>`:(countMode==="pm"?"after lunch":countMode==="eod"?"before leaving, after the Ready piles are loaded":"count before anything moves")+" · the clock starts at the first number"}</div>
   <h2 style="margin:6px 0 0">${esc(st.def.name)}</h2><div style="color:var(--mute)">${esc(countMode!=="am"&&st.k==="start"?"Tickets on hand":st.label)}</div>
-  ${countMode!=="am"?`<div style="color:var(--mute);font-size:12px;margin-top:4px">8:00 count: ${f(amVal(st))}${countMode==="eod"?` · 1:00 count: ${f(snapVal(st,"pm"))}`:""}</div>`:""}
+  ${st.tick?`<div style="color:var(--warn);font-size:12px;margin-top:4px">From the tick sheet: count the ${st.tick.t==="R"?"R's":"X's"+(st.tick.t?" on the "+st.tick.t.toUpperCase()+" line":"")} in the ${COUNTS[countMode].at} row${has(personDone(curDate,st.def,st.tick.n))?` · ${st.tick.n} so far today: ${personDone(curDate,st.def,st.tick.n)}`:""}</div>`:countMode!=="am"?`<div style="color:var(--mute);font-size:12px;margin-top:4px">8:00 count: ${f(amVal(st))}${countMode==="eod"?` · 1:00 count: ${f(snapVal(st,"pm"))}`:""}</div>`:""}
   <div class="big">${shown}</div>
   ${sug!=null?`<div style="text-align:center;margin-bottom:6px"><button class="btn grey" style="flex:none;padding:10px 14px" onclick="useSug(${sug})">Use last day's Left Over: ${sug}</button></div>`:""}
   </div><div class="sr"><div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="ckey('${n}')">${n}</button>`).join("")}<button onclick="ckey('C')">Clear</button><button onclick="ckey('0')">0</button><button onclick="ckey('B')">⌫</button></div>
@@ -1043,7 +1052,7 @@ function snapVal2(mode,def,k){
   if(mode==="am"){ const dd=deptData(curDate,def.id,false); if(!dd) return null; return k==="start"?dd.start:dd.items[k]; }
   const d=day(curDate,false); return d&&d[mode]&&d[mode][def.id]?d[mode][def.id][k]:null;
 }
-function stepKeys(def){ return countSteps().filter(st=>st.def.id===def.id).map(st=>({k:st.k,label:st.label})); }
+function stepKeys(def){ return countSteps().filter(st=>st.def.id===def.id && !st.tick).map(st=>({k:st.k,label:st.label})); }
 function countUsed(mode){ return cfg().depts.some(def=>stepKeys(def).some(x=>has(snapVal2(mode,def,x.k)))); }
 function prettyItem(def,label){ if(/^On hand: /.test(label)) return label.slice(9)+" on hand"; return label.replace(/^Dry Room · /,"").replace(/^[^:]+: /,"")+(/^Dry Room · (Seal|Clear)/.test(label)?" ("+label.match(/^Dry Room · (Seal|Clear)/)[1]+")":""); }
 function compareCounts(def,m1,m2){
@@ -1121,7 +1130,8 @@ function buildReport(){
   /* ---- count quality ---- */
   used.forEach(m=>{
     const blanks=[]; depts.forEach(def=>{ const ohUsed=stepKeys(def).some(x=>/h\|/.test(x.k)&&/^On hand: /.test(x.label)&&has(snapVal2(m,def,x.k)));
-      stepKeys(def).forEach(x=>{ if(/^On hand: /.test(x.label)&&!ohUsed) return; if(!has(snapVal2(m,def,x.k))) blanks.push(`${def.name}: ${prettyItem(def,x.label)}`); }); });
+      const oldStart=def.startFromPiles && has(snapVal2(m,def,"start"));
+      stepKeys(def).forEach(x=>{ if(/^On hand: /.test(x.label)&&!ohUsed) return; if(oldStart) return; if(!has(snapVal2(m,def,x.k))) blanks.push(`${def.name}: ${prettyItem(def,x.label)}`); }); });
     if(blanks.length) add("quality","warn",`${COUNTS[m].at} count left ${blanks.length} box${blanks.length>1?"es":""} blank: ${blanks.slice(0,8).join("; ")}${blanks.length>8?"; and "+(blanks.length-8)+" more":""}.`);
     // two sides of the same department with identical numbers
     depts.forEach(def=>{ const gs=pilesOf(def); if(gs.length<2) return;
@@ -1130,7 +1140,7 @@ function buildReport(){
         if(same.length>=2) add("quality","warn",`${COUNTS[m].at} count: ${def.name} ${a.short||a.title} and ${b.short||b.title} have the same numbers for ${same.join(" and ")}. Double-check they weren't entered twice.`); } });
     const a=d[COUNTS[m].a], b=d[COUNTS[m].b];
     if(a&&b){ const mins=Math.round((b-a)/60000);
-      if(mins<10) add("quality","warn",`${COUNTS[m].name} took only ${mins} minute${mins===1?"":"s"}. That's fast for ${countSteps().length} piles; it may have been rushed.`);
+      if(mins<10) add("quality","warn",`${COUNTS[m].name} took only ${mins} minute${mins===1?"":"s"}. That's fast for ${countSteps().length} steps; it may have been rushed.`);
       else if(mins>45) add("quality","info",`${COUNTS[m].name} took ${mins} minutes (${clock(a)}–${clock(b)}).`);
       if(m==="am" && isToday){ const st=fromStr(curDate); st.setHours(8,15,0,0); if(a>st.getTime()) add("quality","info",`Morning count started at ${clock(a)}, after 8:15. Some work may have already moved before it was counted.`); } }
   });
