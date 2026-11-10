@@ -224,7 +224,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.17";
+const APP_VERSION = "1.18";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -254,7 +254,7 @@ const DEFAULT_CONFIG = {
       {id:"D", title:"Done by person (tick sheet)", kind:"ticks", items:["Casey","Ivan","Amber","George"]}]},
     {id:"ps", name:"Pre-Spray (Seal)", startFromPiles:true, groups:[
       {id:"E", title:"Pre-Spray (Seal)", kind:"pile", items:["Cue/Shaft","Shafts"]}]},
-    {id:"fs", name:"Final Spray (Clear)", startFromPiles:true, groups:[
+    {id:"fs", name:"Final Spray (Clear)", startFromPiles:true, moveTypes:["Cues","Shafts","Extensions","JPs"], groups:[
       {id:"F", title:"Final Spray (Clear)", kind:"pile", items:["Cue/Shaft","Shaft","JP","Ext"]}]},
     {id:"dr", name:"Dry Room", startFromPiles:true, addTypes:["Cues","Shafts","Extensions","JPs"], groups:[
       {id:"DS", title:"Dry Room · Seal", short:"Seal", kind:"pile", items:["Cues","Shafts","Extensions","JPs"]},
@@ -295,6 +295,8 @@ function load(){
       s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if((g.kind==="people"||g.kind==="ticks") && g.items.includes("Casey") && !g.items.includes("George")) g.items.push("George"); }));
       /* v1.13: no per-person On hand (it's part of the Surface Prep Ready pile) */
       s.config.depts.forEach(dp=>{ if(dp.groups) dp.groups=dp.groups.filter(g=>!(g.kind==="pile"&&g.title==="On hand")); });
+      /* v1.18: what leaves Final Spray (Clear) is entered by type */
+      { const fs=s.config.depts.find(dp=>dp.id==="fs"); if(fs && !fs.moveTypes) fs.moveTypes=["Cues","Shafts","Extensions","JPs"]; }
       /* v1.17: Dry Room additions by type */
       { const dr=s.config.depts.find(dp=>dp.id==="dr"); if(dr && !dr.addTypes) dr.addTypes=["Cues","Shafts","Extensions","JPs"]; }
       /* v1.15: Buffing has two piles (inside, Katie outside) and Katie's tick sheet by type */
@@ -439,13 +441,14 @@ function addedTypeLine(def,dd){ if(!def.addTypes||!dd||!dd.addedT) return ""; re
 
 /* ===== moves: what the tracker moved out of each DONE spot, per round ===== */
 function moveRounds(){return cfg().schedule.filter(it=>it.kind==="move")}
-function moveKeys(def){const p=peopleOf(def); return p? p.items.map(n=>itemKey(p.id,n)) : [def.id]}
+function moveKeys(def){const p=peopleOf(def); if(p) return p.items.map(n=>itemKey(p.id,n)); return def.moveTypes?[def.id,...def.moveTypes.map(t=>def.id+"|"+t)]:[def.id]}
+function typeLineObj(types,o){ if(!types||!o) return ""; return types.filter(t=>has(o[t])&&+o[t]>0).map(t=>`${o[t]} ${t}`).join(", "); }
 function movedIn(s,label,def){const d=day(s,false); const r=d&&d.moves&&d.moves[label]; if(!r) return null;
   const vals=moveKeys(def).map(k=>r.v[k]).filter(has); return vals.length?sum(vals):null;}
 function recalcMoves(s){
   const d=day(s,false); if(!d) return;
   const rounds=moveRounds().map(it=>d.moves&&d.moves[it.label]).filter(Boolean);
-  let upstream=null;
+  let upstream=null, upstreamT=null;
   cfg().depts.forEach((def,i)=>{
     const any=rounds.length>0;
     let dd=deptData(s,def.id,false);
@@ -457,8 +460,13 @@ function recalcMoves(s){
       const vals=rounds.map(r=>{const v=moveKeys(def).map(k=>r.v[k]).filter(has); return v.length?sum(v):null}).filter(x=>x!=null);
       dd.movedAuto = vals.length? sum(vals) : null;
       dd.receivedAuto = (i>0 && upstream!=null) ? upstream : null;
+      dd.receivedT = (i>0 && upstreamT) ? upstreamT : null;
       upstream = dd.movedAuto;
-    } else upstream=null;
+      upstreamT = null;
+      if(def.moveTypes){ const o={}; let any=false; def.moveTypes.forEach(t=>{ const v=rounds.map(r=>r.v[def.id+"|"+t]).filter(has); if(v.length){ o[t]=sum(v); any=true; } });
+        const plain=rounds.map(r=>r.v[def.id]).filter(has); if(plain.length && sum(plain)>0){ o["not split"]=sum(plain); any=true; }
+        dd.movedT = any?o:null; upstreamT = dd.movedT; }
+    } else { upstream=null; upstreamT=null; }
   });
   save();
 }
@@ -659,7 +667,7 @@ function drawSheet(){
   if(tg) h+=tickTable(def,tg);
   h+=`<div class="sec">Today</div><div class="fields">
     ${def.startFromPiles?calc("Start of Day (piles)",startOf(def,dd)):fld("start","Start of Day")}
-    ${has(dd.receivedAuto)&&!has(dd.received)?calc("Received (from moves)",dd.receivedAuto):fld("received","Received")}${def.addTypes?def.addTypes.map(t=>fld("at:"+t,t+" added")).join("")+[0,1,2].filter(i=>has(dd.added[i])).map(i=>fld("added"+i,"Added (no type)")).join(""):fld("added0","Added")+fld("added1","Added")+fld("added2","Added")}
+    ${has(dd.receivedAuto)&&!has(dd.received)?calc("Received (from moves)"+(dd.receivedT?" · "+typeLineObj([...(cfg().depts.find(x=>x.moveTypes)||{}).moveTypes||[],"not split"],dd.receivedT):""),dd.receivedAuto):fld("received","Received")}${def.addTypes?def.addTypes.map(t=>fld("at:"+t,t+" added")).join("")+[0,1,2].filter(i=>has(dd.added[i])).map(i=>fld("added"+i,"Added (no type)")).join(""):fld("added0","Added")+fld("added1","Added")+fld("added2","Added")}
     ${ppl?calc("Completed (people)",completedOf(def,dd)):has(dd.movedAuto)?calc("Completed (from moves)",dd.movedAuto):fld("completed","Completed")}
     ${calc("Total to Work",totalOf(def,dd))}${calc("Left Over",leftOf(def,dd))}</div>`;
   h+=keypad("Done","closeSheet()");
@@ -785,9 +793,10 @@ function openMove(label){moveLabel=label; mstep=0; mbuf=""; tab="move"; render()
 function moveSteps(){const s=[]; cfg().depts.forEach((def,i)=>{const p=peopleOf(def);
   const last=i===cfg().depts.length-1;
   if(p) p.items.forEach(n=>s.push({def,k:itemKey(p.id,n),label:"Finished by "+n}));
+  else if(def.moveTypes) def.moveTypes.forEach(t=>s.push({def,k:def.id+"|"+t,label:"Finished · "+t,mtype:t}));
   else s.push({def,k:def.id,label:last?"Finished (passed QC)":"Finished · moved out of DONE"});}); return s;}
 function mget(st){const d=day(curDate,false); const r=d&&d.moves&&d.moves[moveLabel]; return r?r.v[st.k]:null}
-function mset(st,v){const d=day(curDate,true); d.moves=d.moves||{}; const r=d.moves[moveLabel]=d.moves[moveLabel]||{at:Date.now(),v:{}}; r.v[st.k]=v; recalcMoves(curDate);}
+function mset(st,v){const d=day(curDate,true); d.moves=d.moves||{}; const r=d.moves[moveLabel]=d.moves[moveLabel]||{at:Date.now(),v:{}}; r.v[st.k]=v; if(st.mtype && has(v)) delete r.v[st.def.id]; recalcMoves(curDate);}
 function viewMove(){
   const it=cfg().schedule.find(x=>x.label===moveLabel); const s=moveSteps();
   if(mstep>=s.length){
@@ -803,6 +812,7 @@ function viewMove(){
   <div style="color:var(--mute);font-size:13px">${esc(moveLabel)} (${it?hm(it.t):""}) · step ${mstep+1} of ${s.length} · how many did you take out of the DONE spot?</div>
   <h2 style="margin:6px 0 0">${esc(st.def.name)}</h2><div style="color:var(--mute)">${esc(st.label)}</div>
   <div style="color:var(--mute);font-size:12px;margin-top:4px">Today so far: ${f(so)} of ${cfg().targetDay}</div>
+  ${st.mtype?(()=>{const d=day(curDate,false), r=d&&d.moves&&d.moves[moveLabel]; const old=r?r.v[st.def.id]:null; return has(old)&&+old>0?`<div style="color:var(--warn);font-size:12px;margin-top:4px">This round was entered as ${old} without a type. Type the split; the ${old} goes away once you do.</div>`:""})():""}
   <div class="big" style="color:var(--accent)">${shown}</div>
   </div><div class="sr"><div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="mkey('${n}')">${n}</button>`).join("")}<button onclick="mkey('C')">Clear</button><button onclick="mkey('0')">0</button><button onclick="mkey('B')">⌫</button></div>
   <div class="row"><button class="btn grey" onclick="mmove(-1)">‹ Back</button><button class="btn blue" onclick="mmove(1)">${mstep===s.length-1?'Finish':(has(v)||mbuf!==""?'Next ›':'None · Next ›')}</button></div></div></div></div>`;
@@ -1131,6 +1141,11 @@ function buildReport(){
     });
     if(dR>0) add("people","info",`${def.name} rework today: ${dR} of ${dT} (${Math.round(dR/dT*100)}%).`);
   });
+
+  /* ---- what arrived by type (from a department whose moves are split by type) ---- */
+  depts.forEach((def,i)=>{ const dd=deptData(curDate,def.id,false); if(!dd||!dd.receivedT||!(dd.receivedAuto>0)) return; const up=depts[i-1];
+    const tl=typeLineObj([...(up&&up.moveTypes)||[],"not split"],dd.receivedT);
+    add("piles", dd.receivedT["not split"]>0?"warn":"info", `${def.name} received ${dd.receivedAuto} from ${up?up.name:"moves"}${tl?": "+tl:""}${dd.receivedT["not split"]>0?` (open that round on the Schedule and split the ${up?up.name:""} number by type)`:""}.`); });
 
   /* ---- additions by type ---- */
   depts.forEach(def=>{ if(!def.addTypes) return; const dd=deptData(curDate,def.id,false); if(!dd) return;
