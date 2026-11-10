@@ -194,6 +194,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 .ptab tr.tap td:first-child{color:var(--accent)}
 .fields.three{grid-template-columns:repeat(3,1fr)}
 .updbar{position:fixed;left:50%;top:calc(10px + env(safe-area-inset-top));transform:translateX(-50%);z-index:30;background:var(--accent);color:#08101f;border:0;border-radius:12px;padding:12px 18px;font-weight:800;font-size:15px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+.fields.five{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
 </style>
 </head>
 <body>
@@ -223,7 +224,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.14";
+const APP_VERSION = "1.15";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -258,7 +259,9 @@ const DEFAULT_CONFIG = {
     {id:"dr", name:"Dry Room", startFromPiles:true, groups:[
       {id:"DS", title:"Dry Room · Seal", short:"Seal", kind:"pile", items:["Cues","Shafts","Extensions","JPs"]},
       {id:"DC", title:"Dry Room · Clear", short:"Clear", kind:"pile", items:["Cues","Shafts","Extensions","JPs"]}]},
-    {id:"bf", name:"Buffing"},
+    {id:"bf", name:"Buffing", startFromPiles:true, groups:[
+      {id:"K", title:"Piles", kind:"pile", items:["Buffing (inside)","Katie (outside)"]},
+      {id:"Kt", title:"Katie (tick sheet)", kind:"ticks", items:["Katie"], types:["JP","Ext","Cue"]}]},
     {id:"qc", name:"Final QC"}
   ]
 };
@@ -292,6 +295,8 @@ function load(){
       s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if((g.kind==="people"||g.kind==="ticks") && g.items.includes("Casey") && !g.items.includes("George")) g.items.push("George"); }));
       /* v1.13: no per-person On hand (it's part of the Surface Prep Ready pile) */
       s.config.depts.forEach(dp=>{ if(dp.groups) dp.groups=dp.groups.filter(g=>!(g.kind==="pile"&&g.title==="On hand")); });
+      /* v1.15: Buffing has two piles (inside, Katie outside) and Katie's tick sheet by type */
+      { const bf=s.config.depts.find(dp=>dp.id==="bf"); if(bf && !bf.groups){ const nd=JSON.parse(JSON.stringify(DEFAULT_CONFIG.depts.find(dp=>dp.id==="bf"))); bf.startFromPiles=true; bf.groups=nd.groups; } }
       /* v1.12: each person's done comes from the tick sheet; move rounds take one Surface Prep number */
       s.config.depts.forEach(dp=>(dp.groups||[]).forEach(g=>{ if(g.kind==="people"){ g.kind="ticks"; g.title="Done by person (tick sheet)"; } }));
       Object.values(s.days||{}).forEach(d=>{ Object.values(d.moves||{}).forEach(r=>{ const v=r.v||{};
@@ -379,7 +384,7 @@ function countTimes(s,mode){const d=day(s,false); const [a,b]=cKeys(mode); if(!d
   return t;}
 function pmTotal(def,s,mode){mode=mode||"pm"; const d=day(s,false); if(!d||!d[mode]||!d[mode][def.id]) return null; const x=d[mode][def.id];
   const piles=[]; pilesOf(def).forEach(g=>g.items.forEach(n=>{const v=x[itemKey(g.id,n)]; if(has(v)) piles.push(+v)}));
-  if(def.startFromPiles) return piles.length?sum(piles):null;
+  if(def.startFromPiles) return piles.length?sum(piles):(has(x.start)?+x.start:null);
   if(has(x.start)) return +x.start; return piles.length?sum(piles):null;}
 
 function pilesOf(def){return (def.groups||[]).filter(g=>g.kind==="pile")}
@@ -387,7 +392,13 @@ function peopleOf(def){return (def.groups||[]).find(g=>g.kind==="people")}
 function tickGroup(def){return (def.groups||[]).find(g=>g.kind==="ticks")}
 function ohGroup(def){const g=tickGroup(def); return g?pilesOf(def).find(x=>x.id===g.id+"h"):null}
 function tickRaw(s,def,m,k){const d=day(s,false); const t=d&&d.ticks&&d.ticks[m]&&d.ticks[m][def.id]; return t?t[k]:null}
-function tickNew(s,def,m,n){return tickRaw(s,def,m,n)}
+function tickTypes(def){const g=tickGroup(def); return g&&g.types&&g.types.length?g.types:null}
+const TYPE_NAME={JP:"Joint protectors",Ext:"Extensions",Cue:"Cues"};
+function tickType(s,def,m,n,t){return tickRaw(s,def,m,n+"|"+t)}
+function tickNew(s,def,m,n){const ts=tickTypes(def); if(!ts) return tickRaw(s,def,m,n);
+  const v=ts.map(t=>tickType(s,def,m,n,t)).filter(has); return v.length?sum(v):null}
+function personType(s,def,n,t){const v=["am","pm","eod"].map(m=>tickType(s,def,m,n,t)).filter(has); return v.length?sum(v):null}
+function typeLine(s,def,n){const ts=tickTypes(def); if(!ts) return ""; const parts=ts.map(t=>({t,v:personType(s,def,n,t)})).filter(x=>has(x.v)&&+x.v>0); return parts.map(x=>`${x.v} ${x.t}`).join(", ")}
 function tickRw(s,def,m,n){return tickRaw(s,def,m,n+"|R")}
 /* total for that count = new (X) + rework (R) */
 function tickVal(s,def,m,n){const a=tickNew(s,def,m,n), b=tickRw(s,def,m,n); return (has(a)||has(b))?(has(a)?+a:0)+(has(b)?+b:0):null}
@@ -587,11 +598,13 @@ function openDept(i){
 }
 function closeSheet(){person=null; document.getElementById("scrim").classList.remove("on"); cleanupDay(curDate); render()}
 function getVal(k){const dd=deptData(curDate,cfg().depts[cur].id,true);
+  if(/^tt:/.test(k)){const [,m,n,ty]=k.split(":"); return tickType(curDate,cfg().depts[cur],m,n,ty);}
   if(/^(tk|tr|oh):/.test(k)){const [t,m,n]=k.split(":"); const def=cfg().depts[cur]; return t==="tk"?tickNew(curDate,def,m,n):t==="tr"?tickRw(curDate,def,m,n):ohVal(curDate,def,m,n);}
   if(k.startsWith("added")) return dd.added[+k.slice(5)];
   if(k.includes("|")) return dd.items[k];
   return dd[k];}
 function setVal(k,v){const dd=deptData(curDate,cfg().depts[cur].id,true);
+  if(/^tt:/.test(k)){const [,m,n,ty]=k.split(":"); tickSet(curDate,cfg().depts[cur],m,n+"|"+ty,v); save(); return;}
   if(/^(tk|tr|oh):/.test(k)){const [t,m,n]=k.split(":"); const def=cfg().depts[cur]; if(t==="tk") tickSet(curDate,def,m,n,v); else if(t==="tr") tickSet(curDate,def,m,n+"|R",v); else ohSet(curDate,def,m,n,v); save(); return;}
   if(k.startsWith("added")) dd.added[+k.slice(5)]=v;
   else if(k.includes("|")) dd.items[k]=v;
@@ -608,23 +621,26 @@ function keypad(doneLabel,doneFn){return `<div class="pad">${[1,2,3,4,5,6,7,8,9]
 function drawPerson(def){
   const n=person, ms=["am","pm","eod"], lab={am:"Start of shift → 8:00",pm:"8:00 → 1:00",eod:"1:00 → 4:30"};
   let h=`<div class="shead"><h2>${esc(n)} <span style="color:var(--mute);font-weight:400;font-size:15px">· ${esc(def.name)}</span></h2><button class="btn grey" onclick="closePerson()">‹ Back</button></div>
-  <div class="hint">${dayName(curDate)} ${niceDate(curDate)} · at each count, count the X's (new) and R's (rework) in that row of ${esc(n)}'s tick sheet.</div>`;
+  <div class="hint">${dayName(curDate)} ${niceDate(curDate)} · at each count, count the X's (new${tickTypes(def)?", on each line":""}) and R's (rework) in that row of ${esc(n)}'s tick sheet.</div>`;
   let cum=0, cr=0;
   ms.forEach(m=>{ const tv=tickVal(curDate,def,m,n), r=tickRw(curDate,def,m,n); if(has(tv)) cum+=+tv; if(has(r)) cr+=+r;
-    h+=`<div class="sec">${COUNTS[m].at} count <span style="text-transform:none;font-weight:400">· ${lab[m]}${has(tv)?` · ${cum}${cr?` (${cr} rework)`:""} done so far`:""}</span></div><div class="fields three">${fld("tk:"+m+":"+n,"New (X)")}${fld("tr:"+m+":"+n,"Rework (R)")}${calc("Total",tv)}</div>`; });
-  h+=`<div class="sec">Today</div><div class="fields three">${calc("New today",personNew(curDate,def,n))}${calc("Rework today",personRw(curDate,def,n))}${calc("Total done today",personDone(curDate,def,n))}</div>`;
+    const ts=tickTypes(def);
+    const boxes=ts?ts.map(t=>fld("tt:"+m+":"+n+":"+t,(TYPE_NAME[t]||t)+" (X)")).join("")+fld("tr:"+m+":"+n,"Rework (R)"):fld("tk:"+m+":"+n,"New (X)")+fld("tr:"+m+":"+n,"Rework (R)");
+    h+=`<div class="sec">${COUNTS[m].at} count <span style="text-transform:none;font-weight:400">· ${lab[m]}${has(tv)?` · ${cum}${cr?` (${cr} rework)`:""} done so far`:""}</span></div><div class="fields ${ts?"five":"three"}">${boxes}${calc("Total",tv)}</div>`; });
+  const tsT=tickTypes(def);
+  h+=`<div class="sec">Today</div><div class="fields ${tsT?"five":"three"}">${tsT?tsT.map(t=>calc((TYPE_NAME[t]||t)+" today",personType(curDate,def,n,t))).join(""):calc("New today",personNew(curDate,def,n))}${calc("Rework today",personRw(curDate,def,n))}${calc("Total done today",personDone(curDate,def,n))}</div>`;
   h+=keypad("‹ Back to "+esc(def.name),"closePerson()");
   document.getElementById("sheet").innerHTML=h;
 }
 function tickTable(def,g){
   const ms=["am","pm","eod"]; const all=ms.map(()=>null); let aT=null, aR=null;
   const add=(a,b)=>has(b)?(has(a)?a:0)+(+b):a;
-  let t=`<div class="sec">${esc(g.title)} · tap a name</div><div class="tablebox ptab"><table><tr><th></th>${ms.map(m=>`<th>${COUNTS[m].at}<small>done</small></th>`).join("")}<th>Total</th><th>Rework<small>of total</small></th></tr>`;
+  let t=`<div class="sec">${esc(g.title)} · tap a name</div><div class="tablebox ptab"><table><tr><th></th>${ms.map(m=>`<th>${COUNTS[m].at}<small>done</small></th>`).join("")}<th>Total</th>${tickTypes(def)?"<th>By type</th>":""}<th>Rework<small>of total</small></th></tr>`;
   g.items.forEach(n=>{ const tv=ms.map(m=>tickVal(curDate,def,m,n)), tr=ms.map(m=>tickRw(curDate,def,m,n));
     const tot=personDone(curDate,def,n), rw=personRw(curDate,def,n);
     tv.forEach((v,i)=>{all[i]=add(all[i],v)}); aT=add(aT,tot); aR=add(aR,rw);
-    t+=`<tr class="tap" onclick="openPerson('${esc(n)}')"><td>${esc(n)} ›</td>${tv.map((v,i)=>`<td>${has(v)?v+rwTag(tr[i]):"–"}</td>`).join("")}<td><b>${f(tot)}</b></td><td>${rwPct(rw,tot)}</td></tr>`; });
-  t+=`<tr><td>All</td>${all.map(v=>`<td>${f(v)}</td>`).join("")}<td><b>${f(aT)}</b></td><td>${rwPct(aR,aT)}</td></tr>`;
+    t+=`<tr class="tap" onclick="openPerson('${esc(n)}')"><td>${esc(n)} ›</td>${tv.map((v,i)=>`<td>${has(v)?v+rwTag(tr[i]):"–"}</td>`).join("")}<td><b>${f(tot)}</b></td>${tickTypes(def)?`<td>${typeLine(curDate,def,n)||"–"}</td>`:""}<td>${rwPct(rw,tot)}</td></tr>`; });
+  if(g.items.length>1) t+=`<tr><td>All</td>${all.map(v=>`<td>${f(v)}</td>`).join("")}<td><b>${f(aT)}</b></td>${tickTypes(def)?"<td></td>":""}<td>${rwPct(aR,aT)}</td></tr>`;
   return t+`</table></div>`;
 }
 function rwPct(r,t){ if(!has(t)) return "–"; if(!has(r)||+r===0) return "0"; return `${r} · ${Math.round(r/t*100)}%`; }
@@ -646,7 +662,7 @@ function drawSheet(){
 }
 function fieldOrder(){
   const def=cfg().depts[cur], o=[];
-  if(person) return ["am","pm","eod"].flatMap(m=>["tk:"+m+":"+person,"tr:"+m+":"+person]);
+  if(person){ const ts=tickTypes(def); return ["am","pm","eod"].flatMap(m=>[...(ts?ts.map(t=>"tt:"+m+":"+person+":"+t):["tk:"+m+":"+person]),"tr:"+m+":"+person]); }
   pilesOf(def).filter(g=>g.title!=="On hand").forEach(g=>g.items.forEach(n=>o.push(itemKey(g.id,n))));
   const ppl=peopleOf(def); if(ppl) ppl.items.forEach(n=>o.push(itemKey(ppl.id,n)));
   if(!def.startFromPiles) o.push("start");
@@ -901,7 +917,7 @@ function exportCSV(){
         const p=peopleOf(def); const det=p?p.items.filter(n=>has(r.v[itemKey(p.id,n)])).map(n=>n+"="+r.v[itemKey(p.id,n)]).join("; "):"";
         rows.push([s,dayName(s),"MOVED "+it.label+" ("+hm(it.t)+") – "+def.name,"","","","","","",v,"",det]);});});
     cfg().depts.forEach(def=>{const g=tickGroup(def); if(!g) return; g.items.forEach(n=>{const tv=["am","pm","eod"].map(m=>tickVal(s,def,m,n)); if(!tv.some(has)) return;
-      const ms=["am","pm","eod"]; rows.push([s,dayName(s),"TICK SHEET – "+def.name+" – "+n,"","","","","","",personDone(s,def,n),"",["8:00","1:00","4:30"].map((a,i)=>a+"="+(has(tv[i])?tv[i]:"")+(has(tickRw(s,def,ms[i],n))?" ("+tickRw(s,def,ms[i],n)+" rework)":"")).join("; ")+(has(personRw(s,def,n))?"; rework total="+personRw(s,def,n):"")]);});});
+      const ms=["am","pm","eod"]; rows.push([s,dayName(s),"TICK SHEET – "+def.name+" – "+n,"","","","","","",personDone(s,def,n),"",["8:00","1:00","4:30"].map((a,i)=>a+"="+(has(tv[i])?tv[i]:"")+(has(tickRw(s,def,ms[i],n))?" ("+tickRw(s,def,ms[i],n)+" rework)":"")).join("; ")+(has(personRw(s,def,n))?"; rework total="+personRw(s,def,n):"")+(typeLine(s,def,n)?"; "+typeLine(s,def,n):"")]);});});
     cfg().schedule.forEach((it,i)=>{const v=schedDone(s,i); if(v) rows.push([s,dayName(s),"SCHEDULE","","","","","","","","",it.label+" ("+hm(it.t)+") done "+clock(v)]);});
     if(store.days[s].countStarted) rows.push([s,dayName(s),"MORNING COUNT","","","","","","","","",countTimes(s,"am")]);
     ["pm","eod"].forEach(m=>{ if(store.days[s][m]){ cfg().depts.forEach(def=>{const p=pmTotal(def,s,m); const x=store.days[s][m][def.id]; if(p==null&&!x) return;
@@ -1093,10 +1109,11 @@ function buildReport(){
     });
     const top=rows.filter(r=>r.rw>=2&&r.pct>=0.15).sort((a,b)=>b.pct-a.pct)[0];
     rows.forEach(r=>{
-      let lvl=r.cum>0?"good":"info", tail=r.rw?` · ${r.nw} new, ${r.rw} rework today`:` · no rework`;
+      const tl=typeLine(curDate,def,r.n);
+      let lvl=r.cum>0?"good":"info", tail=(tl?` · ${tl}`:"")+(r.rw?(tl?`, ${r.rw} rework`:` · ${r.nw} new, ${r.rw} rework today`):` · no rework`);
       if(top&&top.n===r.n){ lvl="warn"; tail=` · ${Math.round(r.pct*100)}% rework today${rows.filter(x=>x.rw>0).length>1?", the highest":""}`; }
       if(r.last.m!=="am" && +r.last.tv===0){ lvl="warn"; tail+=" · none done since the last count"; watchPeople.push(r.n); }
-      add("people",lvl,`${r.n}: ${r.parts.join(" · ")}${tail}.`);
+      add("people",lvl,`${r.n}${g.items.length===1?` (${def.name})`:""}: ${r.parts.join(" · ")}${tail}.`);
     });
     if(dR>0) add("people","info",`${def.name} rework today: ${dR} of ${dT} (${Math.round(dR/dT*100)}%).`);
   });
@@ -1141,7 +1158,7 @@ function viewReport(){
   const sec=(title,list)=>list.length?`<div class="rsec"><h3>${title}</h3>${list.map(x=>`<div class="ri ${x.lvl}"><span class="rdot">${ic[x.lvl]}</span><span>${esc(x.txt)}</span></div>`).join("")}</div>`:"";
   return `<div class="rhead"><div><h2 style="margin:0">What's going on?</h2><div class="hint" style="margin:2px 0 0">${dayName(curDate)} ${niceDate(curDate)} · as of ${new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}${syncReady()?" · tap ⬇ Download first for everyone's latest numbers":""}</div></div>
     <button class="btn grey" style="flex:none" onclick="go('today')">‹ Back to Today</button></div>
-    ${sec("Bottom line",R.bottom)}${sec("Finished work (move rounds)",R.moves)}${sec("Surface Prep people (tick sheet)",R.people)}${sec("Piles (counts)",R.piles)}${sec("Count check",R.quality)}${sec("Schedule",R.sched)}`;
+    ${sec("Bottom line",R.bottom)}${sec("Finished work (move rounds)",R.moves)}${sec("People (tick sheets)",R.people)}${sec("Piles (counts)",R.piles)}${sec("Count check",R.quality)}${sec("Schedule",R.sched)}`;
 }
 
 /* ===================== Render ===================== */
