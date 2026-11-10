@@ -192,6 +192,8 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 .ptab tr.tap{cursor:pointer}
 .ptab tr.tap:active td{background:var(--line)}
 .ptab tr.tap td:first-child{color:var(--accent)}
+.fields.three{grid-template-columns:repeat(3,1fr)}
+.updbar{position:fixed;left:50%;top:calc(10px + env(safe-area-inset-top));transform:translateX(-50%);z-index:30;background:var(--accent);color:#08101f;border:0;border-radius:12px;padding:12px 18px;font-weight:800;font-size:15px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
 </style>
 </head>
 <body>
@@ -221,7 +223,7 @@ textarea{width:100%;min-height:90px;background:var(--panel2);border:1px solid va
 
 <script>
 /* ===================== Setup ===================== */
-const APP_VERSION = "1.13";
+const APP_VERSION = "1.14";
 const KEY = "sw2099_production_v1";
 
 const DEFAULT_CONFIG = {
@@ -384,7 +386,14 @@ function pilesOf(def){return (def.groups||[]).filter(g=>g.kind==="pile")}
 function peopleOf(def){return (def.groups||[]).find(g=>g.kind==="people")}
 function tickGroup(def){return (def.groups||[]).find(g=>g.kind==="ticks")}
 function ohGroup(def){const g=tickGroup(def); return g?pilesOf(def).find(x=>x.id===g.id+"h"):null}
-function tickVal(s,def,m,n){const d=day(s,false); const t=d&&d.ticks&&d.ticks[m]&&d.ticks[m][def.id]; return t?t[n]:null}
+function tickRaw(s,def,m,k){const d=day(s,false); const t=d&&d.ticks&&d.ticks[m]&&d.ticks[m][def.id]; return t?t[k]:null}
+function tickNew(s,def,m,n){return tickRaw(s,def,m,n)}
+function tickRw(s,def,m,n){return tickRaw(s,def,m,n+"|R")}
+/* total for that count = new (X) + rework (R) */
+function tickVal(s,def,m,n){const a=tickNew(s,def,m,n), b=tickRw(s,def,m,n); return (has(a)||has(b))?(has(a)?+a:0)+(has(b)?+b:0):null}
+function personRw(s,def,n){const v=["am","pm","eod"].map(m=>tickRw(s,def,m,n)).filter(has); return v.length?sum(v):null}
+function personNew(s,def,n){const v=["am","pm","eod"].map(m=>tickNew(s,def,m,n)).filter(has); return v.length?sum(v):null}
+function rwTag(r){return has(r)&&+r>0?` <span style="color:var(--warn)">(${r}R)</span>`:""}
 function tickSet(s,def,m,n,v){const d=day(s,true); d.ticks=d.ticks||{}; d.ticks[m]=d.ticks[m]||{}; d.ticks[m][def.id]=d.ticks[m][def.id]||{}; d.ticks[m][def.id][n]=v;}
 function personDone(s,def,n){const vals=["am","pm","eod"].map(m=>tickVal(s,def,m,n)).filter(has); if(vals.length) return sum(vals);
   const d=day(s,false); if(d&&d.ticks&&["am","pm","eod"].some(m=>d.ticks[m]&&d.ticks[m][def.id])) return null;
@@ -547,7 +556,7 @@ function card(def, dd, i){
   let sub="";
   (def.groups||[]).forEach(g=>{ const isOH=g.title==="On hand";
     g.items.forEach(n=>{const v=dd?dd.items[itemKey(g.id,n)]:null;
-      if(g.kind==="ticks"){ const pd=personDone(curDate,def,n); sub+=`<span class="chip">${esc(n)} done <b>${has(pd)?pd:"–"}</b></span>`; }
+      if(g.kind==="ticks"){ const pd=personDone(curDate,def,n), pr=personRw(curDate,def,n); sub+=`<span class="chip">${esc(n)} done <b>${has(pd)?pd:"–"}</b>${has(pr)&&+pr>0?` <b style="color:var(--warn)">${pr}R</b>`:""}</span>`; }
       else if(has(v)) sub+=`<span class="chip ${g.kind==='pile'?'pile':''}">${g.short?esc(g.short)+" ":""}${esc(n)}${isOH?" on hand":""} <b>${v}</b></span>`;});
     if(g.kind==="ticks"||isOH) sub+=`<br>`; });
   const inn = dd?inOf(dd):0;
@@ -578,12 +587,12 @@ function openDept(i){
 }
 function closeSheet(){person=null; document.getElementById("scrim").classList.remove("on"); cleanupDay(curDate); render()}
 function getVal(k){const dd=deptData(curDate,cfg().depts[cur].id,true);
-  if(/^(tk|oh):/.test(k)){const [t,m,n]=k.split(":"); const def=cfg().depts[cur]; return t==="tk"?tickVal(curDate,def,m,n):ohVal(curDate,def,m,n);}
+  if(/^(tk|tr|oh):/.test(k)){const [t,m,n]=k.split(":"); const def=cfg().depts[cur]; return t==="tk"?tickNew(curDate,def,m,n):t==="tr"?tickRw(curDate,def,m,n):ohVal(curDate,def,m,n);}
   if(k.startsWith("added")) return dd.added[+k.slice(5)];
   if(k.includes("|")) return dd.items[k];
   return dd[k];}
 function setVal(k,v){const dd=deptData(curDate,cfg().depts[cur].id,true);
-  if(/^(tk|oh):/.test(k)){const [t,m,n]=k.split(":"); const def=cfg().depts[cur]; if(t==="tk") tickSet(curDate,def,m,n,v); else ohSet(curDate,def,m,n,v); save(); return;}
+  if(/^(tk|tr|oh):/.test(k)){const [t,m,n]=k.split(":"); const def=cfg().depts[cur]; if(t==="tk") tickSet(curDate,def,m,n,v); else if(t==="tr") tickSet(curDate,def,m,n+"|R",v); else ohSet(curDate,def,m,n,v); save(); return;}
   if(k.startsWith("added")) dd.added[+k.slice(5)]=v;
   else if(k.includes("|")) dd.items[k]=v;
   else dd[k]=v; save();}
@@ -599,22 +608,26 @@ function keypad(doneLabel,doneFn){return `<div class="pad">${[1,2,3,4,5,6,7,8,9]
 function drawPerson(def){
   const n=person, ms=["am","pm","eod"], lab={am:"Start of shift → 8:00",pm:"8:00 → 1:00",eod:"1:00 → 4:30"};
   let h=`<div class="shead"><h2>${esc(n)} <span style="color:var(--mute);font-weight:400;font-size:15px">· ${esc(def.name)}</span></h2><button class="btn grey" onclick="closePerson()">‹ Back</button></div>
-  <div class="hint">${dayName(curDate)} ${niceDate(curDate)} · at each count, type the number from ${esc(n)}'s tick sheet (that row only).</div>`;
-  let cum=0;
-  ms.forEach(m=>{ const tv=tickVal(curDate,def,m,n); if(has(tv)) cum+=+tv;
-    h+=`<div class="sec">${COUNTS[m].at} count <span style="text-transform:none;font-weight:400">· ${lab[m]}${has(tv)?` · ${cum} done so far`:""}</span></div><div class="fields two">${fld("tk:"+m+":"+n,"Done (tick sheet row)")}</div>`; });
-  const tot=personDone(curDate,def,n);
-  h+=`<div class="sec">Today</div><div class="fields two">${calc("Total done today",tot)}</div>`;
+  <div class="hint">${dayName(curDate)} ${niceDate(curDate)} · at each count, count the X's (new) and R's (rework) in that row of ${esc(n)}'s tick sheet.</div>`;
+  let cum=0, cr=0;
+  ms.forEach(m=>{ const tv=tickVal(curDate,def,m,n), r=tickRw(curDate,def,m,n); if(has(tv)) cum+=+tv; if(has(r)) cr+=+r;
+    h+=`<div class="sec">${COUNTS[m].at} count <span style="text-transform:none;font-weight:400">· ${lab[m]}${has(tv)?` · ${cum}${cr?` (${cr} rework)`:""} done so far`:""}</span></div><div class="fields three">${fld("tk:"+m+":"+n,"New (X)")}${fld("tr:"+m+":"+n,"Rework (R)")}${calc("Total",tv)}</div>`; });
+  h+=`<div class="sec">Today</div><div class="fields three">${calc("New today",personNew(curDate,def,n))}${calc("Rework today",personRw(curDate,def,n))}${calc("Total done today",personDone(curDate,def,n))}</div>`;
   h+=keypad("‹ Back to "+esc(def.name),"closePerson()");
   document.getElementById("sheet").innerHTML=h;
 }
 function tickTable(def,g){
-  const ms=["am","pm","eod"];
-  let t=`<div class="sec">${esc(g.title)} · tap a name</div><div class="tablebox ptab"><table><tr><th></th>${ms.map(m=>`<th>${COUNTS[m].at}<small>done</small></th>`).join("")}<th>Total</th></tr>`;
-  g.items.forEach(n=>{ const tv=ms.map(m=>tickVal(curDate,def,m,n)); const tot=personDone(curDate,def,n);
-    t+=`<tr class="tap" onclick="openPerson('${esc(n)}')"><td>${esc(n)} ›</td>${tv.map(v=>`<td>${has(v)?v:"–"}</td>`).join("")}<td><b>${f(tot)}</b></td></tr>`; });
+  const ms=["am","pm","eod"]; const all=ms.map(()=>null); let aT=null, aR=null;
+  const add=(a,b)=>has(b)?(has(a)?a:0)+(+b):a;
+  let t=`<div class="sec">${esc(g.title)} · tap a name</div><div class="tablebox ptab"><table><tr><th></th>${ms.map(m=>`<th>${COUNTS[m].at}<small>done</small></th>`).join("")}<th>Total</th><th>Rework<small>of total</small></th></tr>`;
+  g.items.forEach(n=>{ const tv=ms.map(m=>tickVal(curDate,def,m,n)), tr=ms.map(m=>tickRw(curDate,def,m,n));
+    const tot=personDone(curDate,def,n), rw=personRw(curDate,def,n);
+    tv.forEach((v,i)=>{all[i]=add(all[i],v)}); aT=add(aT,tot); aR=add(aR,rw);
+    t+=`<tr class="tap" onclick="openPerson('${esc(n)}')"><td>${esc(n)} ›</td>${tv.map((v,i)=>`<td>${has(v)?v+rwTag(tr[i]):"–"}</td>`).join("")}<td><b>${f(tot)}</b></td><td>${rwPct(rw,tot)}</td></tr>`; });
+  t+=`<tr><td>All</td>${all.map(v=>`<td>${f(v)}</td>`).join("")}<td><b>${f(aT)}</b></td><td>${rwPct(aR,aT)}</td></tr>`;
   return t+`</table></div>`;
 }
+function rwPct(r,t){ if(!has(t)) return "–"; if(!has(r)||+r===0) return "0"; return `${r} · ${Math.round(r/t*100)}%`; }
 function drawSheet(){
   const def=cfg().depts[cur], dd=deptData(curDate,def.id,true);
   if(person) return drawPerson(def);
@@ -633,7 +646,7 @@ function drawSheet(){
 }
 function fieldOrder(){
   const def=cfg().depts[cur], o=[];
-  if(person) return ["am","pm","eod"].map(m=>"tk:"+m+":"+person);
+  if(person) return ["am","pm","eod"].flatMap(m=>["tk:"+m+":"+person,"tr:"+m+":"+person]);
   pilesOf(def).filter(g=>g.title!=="On hand").forEach(g=>g.items.forEach(n=>o.push(itemKey(g.id,n))));
   const ppl=peopleOf(def); if(ppl) ppl.items.forEach(n=>o.push(itemKey(ppl.id,n)));
   if(!def.startFromPiles) o.push("start");
@@ -792,8 +805,9 @@ function viewWeek(){
   const people=[]; cfg().depts.forEach(def=>{const p=peopleOf(def)||tickGroup(def); if(p) p.items.forEach(n=>people.push({def,g:p,n}))});
   if(people.length){
     h+=`<div class="sec">People this week (completed)</div><div class="tablebox"><table><tr><th>Person</th>${cols.map(s=>`<th>${shortDay(s)}</th>`).join("")}<th>Week</th></tr>`;
-    people.forEach(p=>{const vals=cols.map(s=>p.g.kind==="ticks"?personDone(s,p.def,p.n):(()=>{const dd=deptData(s,p.def.id,false);return dd?dd.items[itemKey(p.g.id,p.n)]:null})());const any=vals.some(has);
-      h+=`<tr><td>${esc(p.n)} <span style="color:var(--mute);font-size:12px">${esc(p.def.name)}</span></td>${vals.map(v=>has(v)?`<td>${v}</td>`:`<td class="e">–</td>`).join("")}<td><b>${any?sum(vals):"–"}</b></td></tr>`});
+    people.forEach(p=>{const rws=cols.map(s=>p.g.kind==="ticks"?personRw(s,p.def,p.n):null);
+      const vals=cols.map(s=>p.g.kind==="ticks"?personDone(s,p.def,p.n):(()=>{const dd=deptData(s,p.def.id,false);return dd?dd.items[itemKey(p.g.id,p.n)]:null})());const any=vals.some(has);
+      h+=`<tr><td>${esc(p.n)} <span style="color:var(--mute);font-size:12px">${esc(p.def.name)}</span></td>${vals.map((v,i)=>has(v)?`<td>${v}${rwTag(rws[i])}</td>`:`<td class="e">–</td>`).join("")}<td><b>${any?sum(vals):"–"}</b></td></tr>`});
     h+=`</table></div>`;
   }
   // piles
@@ -887,7 +901,7 @@ function exportCSV(){
         const p=peopleOf(def); const det=p?p.items.filter(n=>has(r.v[itemKey(p.id,n)])).map(n=>n+"="+r.v[itemKey(p.id,n)]).join("; "):"";
         rows.push([s,dayName(s),"MOVED "+it.label+" ("+hm(it.t)+") – "+def.name,"","","","","","",v,"",det]);});});
     cfg().depts.forEach(def=>{const g=tickGroup(def); if(!g) return; g.items.forEach(n=>{const tv=["am","pm","eod"].map(m=>tickVal(s,def,m,n)); if(!tv.some(has)) return;
-      rows.push([s,dayName(s),"TICK SHEET – "+def.name+" – "+n,"","","","","","",personDone(s,def,n),"",["8:00","1:00","4:30"].map((a,i)=>a+"="+(has(tv[i])?tv[i]:"")).join("; ")]);});});
+      const ms=["am","pm","eod"]; rows.push([s,dayName(s),"TICK SHEET – "+def.name+" – "+n,"","","","","","",personDone(s,def,n),"",["8:00","1:00","4:30"].map((a,i)=>a+"="+(has(tv[i])?tv[i]:"")+(has(tickRw(s,def,ms[i],n))?" ("+tickRw(s,def,ms[i],n)+" rework)":"")).join("; ")+(has(personRw(s,def,n))?"; rework total="+personRw(s,def,n):"")]);});});
     cfg().schedule.forEach((it,i)=>{const v=schedDone(s,i); if(v) rows.push([s,dayName(s),"SCHEDULE","","","","","","","","",it.label+" ("+hm(it.t)+") done "+clock(v)]);});
     if(store.days[s].countStarted) rows.push([s,dayName(s),"MORNING COUNT","","","","","","","","",countTimes(s,"am")]);
     ["pm","eod"].forEach(m=>{ if(store.days[s][m]){ cfg().depts.forEach(def=>{const p=pmTotal(def,s,m); const x=store.days[s][m][def.id]; if(p==null&&!x) return;
@@ -1064,18 +1078,27 @@ function buildReport(){
   else add("piles","info","No counts entered yet today.");
 
 
-  /* ---- people: tick sheet done at each count ---- */
+  /* ---- people: tick sheet done (new / rework) at each count ---- */
   const watchPeople=[];
   depts.forEach(def=>{ const g=tickGroup(def); if(!g) return;
+    let dT=0, dR=0; const rows=[];
     g.items.forEach(n=>{
       const parts=[]; let cum=0, last=null;
-      ["am","pm","eod"].forEach(m=>{ const tv=tickVal(curDate,def,m,n); if(!has(tv)) return;
-        cum+=+tv; parts.push(`${COUNTS[m].at}: ${cum} done${m!=="am"?` (+${tv})`:""}`); last={m,tv}; });
+      ["am","pm","eod"].forEach(m=>{ const tv=tickVal(curDate,def,m,n), r=tickRw(curDate,def,m,n); if(!has(tv)) return;
+        cum+=+tv; const rr=has(r)&&+r>0?+r:0;
+        parts.push(m==="am"?`${COUNTS[m].at}: ${cum} done${rr?` (${rr} rework)`:""}`:`${COUNTS[m].at}: ${cum} done (+${tv}${rr?`, ${rr} rework`:""})`); last={m,tv}; });
       if(!parts.length) return;
-      let lvl=cum>0?"good":"info", extra="";
-      if(last.m!=="am" && +last.tv===0){ lvl="warn"; extra=" · none done since the last count"; watchPeople.push(n); }
-      add("people",lvl,`${n}: ${parts.join(" · ")}${extra}.`);
+      const nw=personNew(curDate,def,n)||0, rw=personRw(curDate,def,n)||0; dT+=cum; dR+=rw;
+      rows.push({n,parts,cum,nw,rw,last,pct:cum?rw/cum:0});
     });
+    const top=rows.filter(r=>r.rw>=2&&r.pct>=0.15).sort((a,b)=>b.pct-a.pct)[0];
+    rows.forEach(r=>{
+      let lvl=r.cum>0?"good":"info", tail=r.rw?` · ${r.nw} new, ${r.rw} rework today`:` · no rework`;
+      if(top&&top.n===r.n){ lvl="warn"; tail=` · ${Math.round(r.pct*100)}% rework today${rows.filter(x=>x.rw>0).length>1?", the highest":""}`; }
+      if(r.last.m!=="am" && +r.last.tv===0){ lvl="warn"; tail+=" · none done since the last count"; watchPeople.push(r.n); }
+      add("people",lvl,`${r.n}: ${r.parts.join(" · ")}${tail}.`);
+    });
+    if(dR>0) add("people","info",`${def.name} rework today: ${dR} of ${dT} (${Math.round(dR/dT*100)}%).`);
   });
 
   /* ---- count quality ---- */
@@ -1148,7 +1171,17 @@ render();
 setInterval(()=>{ if(document.getElementById("scrim").classList.contains("on")) return; if(tab==="today"||tab==="schedule"){ const a=document.activeElement; if(a&&a.tagName==="TEXTAREA") return; render(); } }, 60000);
 
 if("serviceWorker" in navigator && location.protocol==="https:"){
-  navigator.serviceWorker.register("sw.js").catch(()=>{});
+  const hadCtrl=!!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(reg=>{
+    const check=()=>{ try{ reg.update(); }catch(e){} };
+    document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") check(); });
+    setInterval(check, 30*60*1000);
+  }).catch(()=>{});
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{
+    if(!hadCtrl || document.getElementById("updbar")) return;
+    const b=document.createElement("button"); b.id="updbar"; b.className="updbar"; b.textContent="New version – tap to update";
+    b.onclick=()=>location.reload(); document.body.appendChild(b);
+  });
 }
 </script>
 </body>
